@@ -209,12 +209,14 @@ export function FinanceiroTab() {
 
   const handleOpenDespesaModal = (item?: TransacaoFinanceira) => {
     if (item) {
+      const normalizedStatus =
+        item.status === "CONCLUIDO" ? "PAGO" : item.status || "PENDENTE";
       setEditingId(item.id);
       setFormDespesa({
         descricao: item.descricao.split(" - ")[1] || item.descricao,
         valor: item.valor,
         categoria: item.categoria || "Custo Fixo",
-        status: item.status || "PENDENTE",
+        status: normalizedStatus,
         dataVencimento:
           toInputDate(item.dataVencimento) || toInputDate(item.data),
         dataPagamento: toInputDate(item.dataPagamento),
