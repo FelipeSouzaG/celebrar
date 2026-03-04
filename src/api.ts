@@ -18,7 +18,8 @@ import {
 // Em DEV: usa string vazia para bater no proxy do Vite
 const API_URL = (import.meta as any).env.DEV
   ? ""
-  : (import.meta as any).env.VITE_ADMIN_API_URL || "https://api.celebrar.local";
+  : (import.meta as any).env.VITE_ADMIN_API_URL ||
+    "https://api-celebrar.fluxoclean.com.br";
 
 class AdminApi {
   clearSession() {
