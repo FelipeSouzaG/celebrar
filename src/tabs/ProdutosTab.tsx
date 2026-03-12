@@ -4,6 +4,7 @@ import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
 import { Lote, Produto, ProdutoDetalhesResponse, Role } from "../types";
 import { formatDate, formatMoney } from "../utils";
+import logoUrl from "../img/logo.jpg";
 
 const emptyProdutoForm: Partial<Produto> = {
   codigo_barras: "",
@@ -52,12 +53,17 @@ export function ProdutosTab() {
   const [userRole, setUserRole] = useState<Role>("OPERADOR");
   const isAdmin = userRole === "ADMIN";
   const [reorderOpen, setReorderOpen] = useState(false);
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
 
   // Filters State
   const [searchText, setSearchText] = useState("");
   const [retailMarginFilter, setRetailMarginFilter] = useState("");
   const [wholesaleMarginFilter, setWholesaleMarginFilter] = useState("");
   const [coverageFilter, setCoverageFilter] = useState("");
+  const [labelSearch, setLabelSearch] = useState("");
+  const [labelSelection, setLabelSelection] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Modals
   const [modalOpen, setModalOpen] = useState(false);
@@ -173,6 +179,177 @@ export function ProdutosTab() {
     wholesaleMarginFilter,
     coverageFilter,
   ]);
+
+  const filteredLabelProdutos = useMemo(() => {
+    const term = labelSearch.trim().toLowerCase();
+    if (!term) return produtos;
+    return produtos.filter((p) => {
+      const nome = (p.nome || "").toLowerCase();
+      const codigo = (p.codigo_barras || "").toLowerCase();
+      return nome.includes(term) || codigo.includes(term);
+    });
+  }, [produtos, labelSearch]);
+
+  const selectedLabelIds = useMemo(
+    () => Object.keys(labelSelection).filter((id) => labelSelection[id]),
+    [labelSelection],
+  );
+  const hasSelectedLabels = selectedLabelIds.length > 0;
+
+  const allLabelsSelected =
+    filteredLabelProdutos.length > 0 &&
+    filteredLabelProdutos.every((p) => labelSelection[p.id]);
+  const noneLabelsSelected = selectedLabelIds.length === 0;
+
+  const toggleLabelSelection = (id: string) => {
+    setLabelSelection((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const selectAllLabels = () => {
+    const next: Record<string, boolean> = {};
+    filteredLabelProdutos.forEach((p) => {
+      next[p.id] = true;
+    });
+    setLabelSelection(next);
+  };
+
+  const clearAllLabels = () => {
+    setLabelSelection({});
+  };
+
+  const escapeHtml = (value: string) =>
+    value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+  const renderCodeLocationHtml = (code: string, location: string) => {
+    const clean = code.replace(/\s+/g, "");
+    const loc = (location || "").trim();
+    return `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <div style="font-size:11px;font-weight:700;">${escapeHtml(clean)}</div>
+        <div style="font-size:10px;color:#555;">${escapeHtml(
+          loc || "-",
+        )}</div>
+      </div>
+    `;
+  };
+
+  const handleGenerateLabels = () => {
+    const selected = produtos.filter((p) => labelSelection[p.id]);
+    if (selected.length === 0) return;
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Etiquetas</title>
+          <style>
+            @page { size: A4; margin: 1cm; }
+            body { margin: 0; font-family: Arial, sans-serif; color: #111; }
+            .sheet {
+              width: 19cm;
+              min-height: 27.7cm;
+              display: grid;
+              grid-template-columns: repeat(2, 8cm);
+              grid-auto-rows: 4cm;
+              gap: 0.4cm;
+              align-content: start;
+            }
+            .label {
+              width: 8cm;
+              height: 4cm;
+              border: 1px solid #e5e7eb;
+              padding: 0.3cm;
+              box-sizing: border-box;
+              display: grid;
+              grid-template-rows: 1.8cm 1fr;
+              row-gap: 0.2cm;
+            }
+            .label-top {
+              display: grid;
+              grid-template-columns: 3.2cm 1fr;
+              align-items: start;
+              column-gap: 0.2cm;
+            }
+            .logo {
+              width: 3cm;
+              height: auto;
+            }
+            .prices {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 0.2cm;
+              align-items: start;
+            }
+            .price-block {
+              border: 1px solid #e5e7eb;
+              border-radius: 4px;
+              padding: 0.15cm 0.2cm;
+              text-align: center;
+            }
+            .price-title { font-size: 9px; text-transform: uppercase; color: #555; }
+            .price-value { font-size: 14px; font-weight: bold; margin-top: 2px; }
+            .price-sub { font-size: 9px; color: #555; margin-top: 2px; }
+          </style>
+        </head>
+        <body>
+          <div class="sheet">
+            ${selected
+              .map((p) => {
+                const codeLocation = renderCodeLocationHtml(
+                  p.codigo_barras || "",
+                  p.localizacao || "",
+                );
+                const precoVarejo = formatMoney(p.preco_varejo || 0);
+                const precoAtacado = formatMoney(p.preco_atacado || 0);
+                const qtdAtacado = p.qtd_atacado || 0;
+                return `
+                  <div class="label">
+                    <div class="label-top">
+                      <img class="logo" src="${logoUrl}" alt="Logo" />
+                      <div>${codeLocation}</div>
+                    </div>
+                    <div class="prices">
+                      <div class="price-block">
+                        <div class="price-title">Varejo</div>
+                        <div class="price-value">${escapeHtml(
+                          precoVarejo,
+                        )}</div>
+                      </div>
+                      <div class="price-block">
+                        <div class="price-title">Atacado</div>
+                        <div class="price-value">${escapeHtml(
+                          precoAtacado,
+                        )}</div>
+                        <div class="price-sub">Min: ${qtdAtacado} un</div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+          <script>
+            window.onload = () => { window.print(); };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const win = window.open("", "_blank");
+    if (!win) {
+      alert("Pop-up bloqueado. Permita pop-ups para gerar as etiquetas.");
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -378,6 +555,12 @@ export function ProdutosTab() {
             <Icons.ShoppingBag /> Necessidade de Compra
           </button>
           <button
+            onClick={() => setLabelModalOpen(true)}
+            className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-lg font-bold flex gap-2 shadow-sm active:scale-95 transition-all"
+          >
+            <Icons.Product /> Etiquetas
+          </button>
+          <button
             onClick={() => openModal()}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-bold flex gap-2 shadow-lg shadow-indigo-500/20 active:scale-95 transition-all"
           >
@@ -466,7 +649,7 @@ export function ProdutosTab() {
           </div>
         </div>
 
-        {/* LISTAGEM DE PRODUTOS */}
+      {/* LISTAGEM DE PRODUTOS */}
         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -1487,6 +1670,113 @@ export function ProdutosTab() {
           </div>
         </Modal>
       </div>
+
+      {/* MODAL ETIQUETAS */}
+      <Modal
+        open={labelModalOpen}
+        title="Etiquetas de Produtos"
+        onClose={() => setLabelModalOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3">
+            <input
+              className="w-full p-2 border rounded-lg text-sm"
+              placeholder="Buscar por codigo ou descricao..."
+              value={labelSearch}
+              onChange={(e) => setLabelSearch(e.target.value)}
+            />
+            <div className="flex items-center gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allLabelsSelected}
+                  onChange={() =>
+                    allLabelsSelected ? clearAllLabels() : selectAllLabels()
+                  }
+                />
+                Selecionar Todos
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={noneLabelsSelected}
+                  onChange={() =>
+                    noneLabelsSelected ? selectAllLabels() : clearAllLabels()
+                  }
+                />
+                Desmarcar Todos
+              </label>
+              <span className="text-xs text-slate-500">
+                {selectedLabelIds.length} selecionado(s)
+              </span>
+            </div>
+          </div>
+
+          <div className="border rounded-lg overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-100 text-slate-600 uppercase text-xs">
+                <tr>
+                  <th className="p-3">Codigo</th>
+                  <th className="p-3">Descricao</th>
+                  <th className="p-3">Localizacao</th>
+                  <th className="p-3 text-right">Preco Varejo</th>
+                  <th className="p-3 text-right">Preco Atacado</th>
+                  <th className="p-3 text-center">Qtd Atacado</th>
+                  <th className="p-3 text-center">Acoes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredLabelProdutos.length === 0 ? (
+                  <tr>
+                    <td className="p-4 text-center text-slate-400" colSpan={7}>
+                      Nenhum produto encontrado.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredLabelProdutos.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono text-xs text-slate-600">
+                        {p.codigo_barras}
+                      </td>
+                      <td className="p-3 text-slate-700 font-medium">
+                        {p.nome}
+                      </td>
+                      <td className="p-3 text-slate-500">
+                        {p.localizacao || "-"}
+                      </td>
+                      <td className="p-3 text-right font-semibold text-slate-700">
+                        {formatMoney(p.preco_varejo)}
+                      </td>
+                      <td className="p-3 text-right font-semibold text-indigo-600">
+                        {formatMoney(p.preco_atacado)}
+                      </td>
+                      <td className="p-3 text-center text-slate-600">
+                        {p.qtd_atacado}
+                      </td>
+                      <td className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={!!labelSelection[p.id]}
+                          onChange={() => toggleLabelSelection(p.id)}
+                        />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {hasSelectedLabels && (
+            <button
+              onClick={handleGenerateLabels}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold"
+            >
+              Gerar Etiquetas
+            </button>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
