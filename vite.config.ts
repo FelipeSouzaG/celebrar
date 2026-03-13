@@ -12,7 +12,10 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 3010, // Admin em porta separada
-    allowedHosts: ["admin.celebrar.local", "admin.celebrarfestasembalagens.com.br"],
+    allowedHosts: [
+      "admin.celebrar.local",
+      "admin.celebrarfestasembalagens.com.br",
+    ],
     proxy: {
       // Proxy para o backend na porta 3001
       "/login": "http://localhost:3001",
@@ -22,13 +25,11 @@ export default defineConfig({
   preview: {
     host: "0.0.0.0",
     port: 4010,
-    allowedHosts: ["admin.celebrar.local", "admin.celebrarfestasembalagens.com.br"],
+    allowedHosts: [
+      "admin.celebrar.local",
+      "admin.celebrarfestasembalagens.com.br",
+    ],
   },
-  build: {
-    outDir: path.resolve(__dirname, "dist"),
-    emptyOutDir: true,
-  },
-});
   build: {
     outDir: path.resolve(__dirname, "dist"),
     emptyOutDir: true,
