@@ -2,9 +2,9 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
+import logoUrl from "../img/logo.jpg";
 import { Lote, Produto, ProdutoDetalhesResponse, Role } from "../types";
 import { formatDate, formatMoney } from "../utils";
-import logoUrl from "../img/logo.jpg";
 
 const emptyProdutoForm: Partial<Produto> = {
   codigo_barras: "",
@@ -229,9 +229,9 @@ export function ProdutosTab() {
     const clean = code.replace(/\s+/g, "");
     const loc = (location || "").trim();
     return `
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        <div style="font-size:11px;font-weight:700;">${escapeHtml(clean)}</div>
-        <div style="font-size:10px;color:#555;">${escapeHtml(
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+        <div style="font-size:15px;font-weight:800; padding-right: 8px;">${escapeHtml(clean)}</div>
+        <div style="font-size:15px;color:#333;font-weight:600; padding-right: 8px;">${escapeHtml(
           loc || "-",
         )}</div>
       </div>
@@ -263,22 +263,30 @@ export function ProdutosTab() {
             .label {
               width: 8cm;
               height: 4cm;
-              border: 1px solid #e5e7eb;
-              padding: 0.3cm;
+              border: 1px solid black;
               box-sizing: border-box;
               display: grid;
-              grid-template-rows: 1.8cm 1fr;
-              row-gap: 0.2cm;
+              grid-template-rows: 1.6cm 0.6cm 1fr;
+              row-gap: 0.15cm;
             }
             .label-top {
               display: grid;
-              grid-template-columns: 3.2cm 1fr;
-              align-items: start;
+              grid-template-columns: 2.8cm 1fr;
+              align-items: center;
               column-gap: 0.2cm;
             }
             .logo {
-              width: 3cm;
+              width: 2.4cm;
               height: auto;
+              align-self: center;
+            }
+            .label-desc {
+              font-size: 14px;
+              font-weight: 600;
+              color: #222;
+              line-height: 1.1;
+              align-content: center;
+              text-align: center;
             }
             .prices {
               display: grid;
@@ -287,14 +295,12 @@ export function ProdutosTab() {
               align-items: start;
             }
             .price-block {
-              border: 1px solid #e5e7eb;
-              border-radius: 4px;
-              padding: 0.15cm 0.2cm;
+              padding: 0.05cm 0.1cm;
               text-align: center;
             }
-            .price-title { font-size: 9px; text-transform: uppercase; color: #555; }
-            .price-value { font-size: 14px; font-weight: bold; margin-top: 2px; }
-            .price-sub { font-size: 9px; color: #555; margin-top: 2px; }
+            .price-title { font-size: 12px; text-transform: uppercase; color: #3d3d3d; }
+            .price-value { font-size: 18px; font-weight: bold; margin-top: 2px; }
+            .price-sub { font-size: 12px; color: #3d3d3d; margin-top: 2px; }
           </style>
         </head>
         <body>
@@ -305,6 +311,7 @@ export function ProdutosTab() {
                   p.codigo_barras || "",
                   p.localizacao || "",
                 );
+                const descricao = p.nome || "";
                 const precoVarejo = formatMoney(p.preco_varejo || 0);
                 const precoAtacado = formatMoney(p.preco_atacado || 0);
                 const qtdAtacado = p.qtd_atacado || 0;
@@ -314,6 +321,7 @@ export function ProdutosTab() {
                       <img class="logo" src="${logoUrl}" alt="Logo" />
                       <div>${codeLocation}</div>
                     </div>
+                    <div class="label-desc">${escapeHtml(descricao)}</div>
                     <div class="prices">
                       <div class="price-block">
                         <div class="price-title">Varejo</div>
@@ -649,7 +657,7 @@ export function ProdutosTab() {
           </div>
         </div>
 
-      {/* LISTAGEM DE PRODUTOS */}
+        {/* LISTAGEM DE PRODUTOS */}
         <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -1293,9 +1301,7 @@ export function ProdutosTab() {
                   </label>
                   <CurrencyInput
                     value={form.precoUnidade || 0}
-                    onChange={(val) =>
-                      setForm({ ...form, precoUnidade: val })
-                    }
+                    onChange={(val) => setForm({ ...form, precoUnidade: val })}
                   />
                 </div>
               </div>
@@ -1641,9 +1647,7 @@ export function ProdutosTab() {
                             {p.codigo_barras}
                           </div>
                         </td>
-                        <td className="p-3">
-                          {p.fornecedor?.nome || "-"}
-                        </td>
+                        <td className="p-3">{p.fornecedor?.nome || "-"}</td>
                         <td className="p-3">
                           {p.fornecedor?.prazoEntrega || "-"}
                         </td>
@@ -1780,3 +1784,4 @@ export function ProdutosTab() {
     </div>
   );
 }
+
