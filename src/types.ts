@@ -159,6 +159,7 @@ export interface Compra {
   total: number;
   frete?: number;
   outrasDespesas?: number;
+  descontoGeral?: number;
 
   itens: ItemCompra[];
   despesasGeradas?: any[]; // Para contagem de parcelas no frontend
@@ -305,3 +306,4 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
+
