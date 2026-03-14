@@ -25,6 +25,7 @@ interface CompraForm {
   itens: ItemCompra[];
   frete: number;
   outrasDespesas: number;
+  descontoGeral: number;
   // Financeiro
   status: "PENDENTE" | "PAGO";
   dataVencimento: string;
@@ -43,6 +44,7 @@ const initialForm: CompraForm = {
   itens: [],
   frete: 0,
   outrasDespesas: 0,
+  descontoGeral: 0,
   status: "PENDENTE",
   dataVencimento: todayInputDate(),
   dataPagamento: todayInputDate(),
@@ -277,6 +279,7 @@ export function ComprasTab() {
         })),
         frete: compra.frete || 0,
         outrasDespesas: compra.outrasDespesas || 0,
+        descontoGeral: compra.descontoGeral || 0,
         status: compra.status || "PAGO",
         dataVencimento: compra.dataVencimento
           ? toInputDate(compra.dataVencimento)
@@ -367,7 +370,10 @@ export function ComprasTab() {
 
   // Calculations
   const totalItens = form.itens.reduce((acc, i) => acc + i.qtd * i.custo_un, 0);
-  const totalGeral = totalItens + form.frete + form.outrasDespesas;
+  const totalGeral = Math.max(
+    0,
+    totalItens + form.frete + form.outrasDespesas - form.descontoGeral,
+  );
 
   const selectedSupplierObj = fornecedores.find(
     (f) => f.id === form.fornecedorId,
@@ -820,7 +826,7 @@ export function ComprasTab() {
               </span>{" "}
               Custos Adicionais (Rateio)
             </h4>
-            <div className="grid grid-cols-2 gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100">
+            <div className="grid grid-cols-3 gap-4 bg-orange-50 p-4 rounded-xl border border-orange-100">
               <div>
                 <label className="text-xs font-bold text-orange-800 uppercase">
                   Frete (R$)
@@ -839,6 +845,16 @@ export function ComprasTab() {
                   className="w-full p-2 border border-orange-200 rounded text-sm focus:border-orange-400 pl-8 bg-white"
                   value={form.outrasDespesas}
                   onChange={(val) => setForm({ ...form, outrasDespesas: val })}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-orange-800 uppercase">
+                  Desconto Geral (R$)
+                </label>
+                <CurrencyInput
+                  className="w-full p-2 border border-orange-200 rounded text-sm focus:border-orange-400 pl-8 bg-white"
+                  value={form.descontoGeral}
+                  onChange={(val) => setForm({ ...form, descontoGeral: val })}
                 />
               </div>
             </div>
@@ -1059,3 +1075,4 @@ export function ComprasTab() {
     </div>
   );
 }
+
