@@ -13,13 +13,15 @@ import {
   SessaoCaixaAdmin,
   TransacaoFinanceira,
   UsuarioAdmin,
+  VendaAdmin,
+  VendaDiretaMutationResponse,
 } from "./types";
 
 // Em DEV: usa string vazia para bater no proxy do Vite
 const API_URL = (import.meta as any).env.DEV
   ? ""
   : (import.meta as any).env.VITE_ADMIN_API_URL ||
-    "https://api-celebrar.fluxoclean.com.br";
+    "https://api.celebrarfestasembalagens.com.br";
 
 class AdminApi {
   clearSession() {
@@ -328,7 +330,7 @@ class AdminApi {
 
   // --- VENDAS DIRETAS (Pedidos / Entrega / Concluído)
   createVendaDireta(data: any) {
-    return this.request<any>(`/admin/vendas-diretas`, {
+    return this.request<VendaDiretaMutationResponse>(`/admin/vendas-diretas`, {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -338,14 +340,17 @@ class AdminApi {
     const q = filter?.status
       ? `?status=${encodeURIComponent(filter.status)}`
       : "";
-    return this.request<any[]>(`/admin/vendas-diretas${q}`);
+    return this.request<VendaAdmin[]>(`/admin/vendas-diretas${q}`);
   }
 
   updateVendaDireta(id: string, data: any) {
-    return this.request<any>(`/admin/vendas-diretas/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    return this.request<VendaDiretaMutationResponse>(
+      `/admin/vendas-diretas/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   deleteVendaDireta(id: string) {
@@ -358,10 +363,13 @@ class AdminApi {
     id: string,
     data: { status: string; contaBancariaId?: string },
   ) {
-    return this.request<any>(`/admin/vendas/${id}/status`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+    return this.request<VendaDiretaMutationResponse>(
+      `/admin/vendas/${id}/status`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    );
   }
 
   // ADMIN DELETIONS
