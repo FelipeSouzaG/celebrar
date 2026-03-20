@@ -5,6 +5,7 @@ import { CurrencyInput, Modal } from "../components/Shared";
 import {
   Cliente,
   ContaBancaria,
+  NfeResult,
   Produto,
   VendaDiretaMutationResponse,
 } from "../types";
@@ -186,15 +187,164 @@ export function VendaDiretaTab() {
   );
   const total = subtotal + (form.frete || 0);
 
+  const resolvePagamentoLabel = (tipo?: string) => {
+    const t = String(tipo || "").toUpperCase();
+    if (t === "DINHEIRO") return "Dinheiro";
+    if (t === "PIX") return "PIX";
+    if (t === "CARTAO") return "Cartão";
+    return t || "-";
+  };
+
+  const escapeHtml = (value: any) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const printNfeA4 = (nfe: NfeResult, venda: any) => {
+    if (!nfe?.authorized) return;
+
+    const itens = Array.isArray(venda?.itens) ? venda.itens : [];
+    const itensRows = itens
+      .map((it: any) => {
+        const nome = it?.produto?.nome || it?.produtoNome || "Item";
+        const qtd = Number(it?.qtd || 0);
+        const unit = Number(it?.preco_un_aplicado || 0);
+        const subtotalItem = qtd * unit;
+        return `<tr>
+          <td>${escapeHtml(nome)}</td>
+          <td class="right">${qtd.toLocaleString("pt-BR")}</td>
+          <td class="right">${unit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+          <td class="right">${subtotalItem.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const totalVenda = Number(venda?.total || 0);
+    const dataVenda = venda?.data_venda
+      ? new Date(venda.data_venda).toLocaleString("pt-BR")
+      : new Date().toLocaleString("pt-BR");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DANFE NF-e</title>
+    <style>
+      @page { size: A4; margin: 12mm; }
+      body { font-family: Arial, sans-serif; color: #111; margin: 0; }
+      .sheet { width: 100%; }
+      .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
+      h1 { font-size: 20px; margin: 0; }
+      .sub { font-size: 12px; margin-top: 4px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 12px; margin-bottom: 10px; }
+      .label { font-weight: bold; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { border: 1px solid #333; padding: 6px; }
+      th { background: #f3f4f6; text-align: left; }
+      .right { text-align: right; }
+      .totais { margin-top: 10px; width: 320px; margin-left: auto; font-size: 13px; }
+      .totais div { display: flex; justify-content: space-between; padding: 4px 0; }
+      .footer { margin-top: 14px; font-size: 11px; border-top: 1px solid #111; padding-top: 8px; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div class="head">
+        <div>
+          <h1>DANFE - NF-e</h1>
+          <div class="sub">Documento Auxiliar da Nota Fiscal Eletrônica</div>
+          <div class="sub">Emitida em homologação (sem valor fiscal)</div>
+        </div>
+        <div class="sub"><strong>Série/Número:</strong> ${escapeHtml(nfe.serie || "-")} / ${escapeHtml(nfe.numero || "-")}</div>
+      </div>
+
+      <div class="grid">
+        <div><span class="label">Venda:</span> ${escapeHtml(venda?.codigo || venda?.id || "-")}</div>
+        <div><span class="label">Data:</span> ${escapeHtml(dataVenda)}</div>
+        <div><span class="label">Cliente:</span> ${escapeHtml(venda?.cliente?.nome || "-")}</div>
+        <div><span class="label">Pagamento:</span> ${escapeHtml(resolvePagamentoLabel(venda?.tipo_pagamento))}</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th class="right">Qtd</th>
+            <th class="right">Unitário</th>
+            <th class="right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>${itensRows}</tbody>
+      </table>
+
+      <div class="totais">
+        <div><strong>Total NF-e</strong><strong>${totalVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></div>
+      </div>
+
+      <div class="footer">
+        <div><strong>Protocolo:</strong> ${escapeHtml(nfe.protocolo || "-")}</div>
+        <div><strong>Chave de Acesso:</strong> ${escapeHtml(nfe.chaveAcesso || "-")}</div>
+        <div><strong>Consulta:</strong> ${escapeHtml(nfe.consultaUrl || "-")}</div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+    const frame = document.createElement("iframe");
+    frame.style.position = "fixed";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    document.body.appendChild(frame);
+
+    const win = frame.contentWindow;
+    if (!win) {
+      document.body.removeChild(frame);
+      throw new Error("Não foi possível abrir a janela de impressão.");
+    }
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      setTimeout(() => {
+        if (document.body.contains(frame)) document.body.removeChild(frame);
+      }, 500);
+    }, 200);
+  };
+
   const showFiscalFeedback = (
     result: VendaDiretaMutationResponse | undefined,
     successMessage: string,
+    venda?: any,
   ) => {
-    if (result?.nfe?.authorized) {
+    if (result?.nfe?.statusCode === "DISABLED") {
       setAlertModal({
         open: true,
         title: "Venda Direta",
-        message: `${successMessage}\nNF-e autorizada em homologação.`,
+        message: `${successMessage}\nEmissão de NF-e em teste está desativada no backend.`,
+      });
+      return;
+    }
+
+    if (result?.nfe?.authorized) {
+      try {
+        printNfeA4(result.nfe, venda);
+      } catch (e) {
+        console.error(e);
+      }
+      setAlertModal({
+        open: true,
+        title: "Venda Direta",
+        message: `${successMessage}\nNF-e autorizada em homologação. Impressão A4 enviada.`,
       });
       return;
     }
@@ -240,6 +390,14 @@ export function VendaDiretaTab() {
 
       if (editingId) {
         // Editar venda existente
+        const vendaParaImpressao = {
+          codigo: editingId,
+          data_venda: new Date().toISOString(),
+          cliente: selectedCliente ? { nome: selectedCliente.nome } : undefined,
+          tipo_pagamento,
+          total,
+          itens: form.itens,
+        };
         const result = await adminApi.updateVendaDireta(editingId, {
           clienteId: form.clienteId || null,
           endereco: form.endereco,
@@ -251,10 +409,17 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        showFiscalFeedback(result, "Venda atualizada com sucesso.");
+        showFiscalFeedback(result, "Venda atualizada com sucesso.", vendaParaImpressao);
         setEditingId(null);
       } else {
         // Criar nova venda
+        const vendaParaImpressao = {
+          data_venda: new Date().toISOString(),
+          cliente: selectedCliente ? { nome: selectedCliente.nome } : undefined,
+          tipo_pagamento,
+          total,
+          itens: form.itens,
+        };
         const result = await adminApi.createVendaDireta({
           clienteId: form.clienteId || null,
           endereco: form.endereco,
@@ -266,7 +431,8 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        showFiscalFeedback(result, "Venda criada com sucesso.");
+        const vendaRetornada = result?.venda ? { ...vendaParaImpressao, ...result.venda } : vendaParaImpressao;
+        showFiscalFeedback(result, "Venda criada com sucesso.", vendaRetornada);
       }
       setModalOpen(false);
       // Recarrega lista
@@ -536,6 +702,7 @@ export function VendaDiretaTab() {
                                   showFiscalFeedback(
                                     result,
                                     "Venda concluída com sucesso.",
+                                    v,
                                   );
                                 } catch (e) {
                                   setAlertModal({
@@ -1451,3 +1618,4 @@ export function VendaDiretaTab() {
     </div>
   );
 }
+
