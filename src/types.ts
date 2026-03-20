@@ -265,6 +265,27 @@ export interface VendaAdmin {
   } | null;
 }
 
+export interface NfeResult {
+  enabled: boolean;
+  attempted: boolean;
+  authorized: boolean;
+  homologacao?: boolean;
+  chaveAcesso?: string;
+  numero?: number;
+  serie?: number;
+  protocolo?: string;
+  dataAutorizacao?: string;
+  statusCode?: string;
+  statusMessage?: string;
+  consultaUrl?: string;
+}
+
+export interface VendaDiretaMutationResponse {
+  success: boolean;
+  venda: VendaAdmin;
+  nfe?: NfeResult;
+}
+
 export interface MovimentacaoCaixaAdmin {
   id: string;
   tipo: "SANGRIA" | "SUPRIMENTO";
@@ -306,4 +327,3 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
-
