@@ -2,7 +2,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import { Cliente, ContaBancaria, Produto } from "../types";
+import {
+  Cliente,
+  ContaBancaria,
+  Produto,
+  VendaDiretaMutationResponse,
+} from "../types";
 import { formatDate, formatDateOnly, toInputDate } from "../utils";
 
 export function VendaDiretaTab() {
@@ -181,6 +186,44 @@ export function VendaDiretaTab() {
   );
   const total = subtotal + (form.frete || 0);
 
+  const showFiscalFeedback = (
+    result: VendaDiretaMutationResponse | undefined,
+    successMessage: string,
+  ) => {
+    if (result?.nfe?.authorized) {
+      setAlertModal({
+        open: true,
+        title: "Venda Direta",
+        message: `${successMessage}\nNF-e autorizada em homologação.`,
+      });
+      return;
+    }
+
+    if (result?.nfe?.attempted) {
+      setAlertModal({
+        open: true,
+        title: "Venda salva com alerta fiscal",
+        message: `Venda salva, mas a NF-e não foi autorizada. [${result.nfe?.statusCode || "SEM_COD"}] ${result.nfe?.statusMessage || "Sem detalhe."}`,
+      });
+      return;
+    }
+
+    if (result?.nfe && !result.nfe.attempted) {
+      setAlertModal({
+        open: true,
+        title: "Venda salva com alerta fiscal",
+        message: `Venda salva, mas a NF-e não foi emitida. ${result.nfe?.statusMessage || "Sem detalhe."}`,
+      });
+      return;
+    }
+
+    setAlertModal({
+      open: true,
+      title: "Venda Direta",
+      message: successMessage,
+    });
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.itens || form.itens.length === 0)
@@ -197,7 +240,7 @@ export function VendaDiretaTab() {
 
       if (editingId) {
         // Editar venda existente
-        await adminApi.updateVendaDireta(editingId, {
+        const result = await adminApi.updateVendaDireta(editingId, {
           clienteId: form.clienteId || null,
           endereco: form.endereco,
           itens: form.itens,
@@ -208,15 +251,11 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        setAlertModal({
-          open: true,
-          title: "Venda Direta",
-          message: "Venda atualizada com sucesso.",
-        });
+        showFiscalFeedback(result, "Venda atualizada com sucesso.");
         setEditingId(null);
       } else {
         // Criar nova venda
-        await adminApi.createVendaDireta({
+        const result = await adminApi.createVendaDireta({
           clienteId: form.clienteId || null,
           endereco: form.endereco,
           itens: form.itens,
@@ -227,11 +266,7 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        setAlertModal({
-          open: true,
-          title: "Venda Direta",
-          message: "Venda criada com sucesso.",
-        });
+        showFiscalFeedback(result, "Venda criada com sucesso.");
       }
       setModalOpen(false);
       // Recarrega lista
@@ -493,11 +528,15 @@ export function VendaDiretaTab() {
                               message: "Confirmar marcar como CONCLUIDO?",
                               onConfirm: async () => {
                                 try {
-                                  await adminApi.updateVendaStatus(v.id, {
+                                  const result = await adminApi.updateVendaStatus(v.id, {
                                     status: "CONCLUIDO",
                                     contaBancariaId: v.contaBancariaId || null,
                                   });
                                   await loadVendas();
+                                  showFiscalFeedback(
+                                    result,
+                                    "Venda concluída com sucesso.",
+                                  );
                                 } catch (e) {
                                   setAlertModal({
                                     open: true,
