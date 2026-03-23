@@ -270,6 +270,8 @@ export interface NfeResult {
   attempted: boolean;
   authorized: boolean;
   homologacao?: boolean;
+  naturezaOperacao?: string;
+  dataEmissao?: string;
   chaveAcesso?: string;
   numero?: number;
   serie?: number;
@@ -278,6 +280,44 @@ export interface NfeResult {
   statusCode?: string;
   statusMessage?: string;
   consultaUrl?: string;
+  emitente?: {
+    nome?: string;
+    cnpj?: string;
+    ie?: string;
+    fone?: string;
+    endereco?: {
+      logradouro?: string;
+      numero?: string;
+      complemento?: string;
+      bairro?: string;
+      cidade?: string;
+      uf?: string;
+      cep?: string;
+    };
+  };
+  destinatario?: {
+    nome?: string;
+    documento?: string;
+    documentoTipo?: string;
+    ie?: string;
+    endereco?: {
+      logradouro?: string;
+      numero?: string;
+      complemento?: string;
+      bairro?: string;
+      cidade?: string;
+      uf?: string;
+      cep?: string;
+    };
+  };
+  totais?: {
+    vBC?: string;
+    vICMS?: string;
+    vProd?: string;
+    vFrete?: string;
+    vOutro?: string;
+    vNF?: string;
+  };
 }
 
 export interface VendaDiretaMutationResponse {
@@ -327,3 +367,4 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
+
