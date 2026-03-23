@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
+import logoLoja from "../img/logo.jpg";
 import {
   Cliente,
   ContaBancaria,
@@ -207,25 +208,115 @@ export function VendaDiretaTab() {
     if (!nfe?.authorized) return;
 
     const itens = Array.isArray(venda?.itens) ? venda.itens : [];
+    const toNumber = (value: any) => {
+      const normalized =
+        typeof value === "string" ? value.replace(",", ".") : value;
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const formatMoney = (value: number) =>
+      value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const formatDateTime = (value?: string) => {
+      if (!value) return "-";
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return d.toLocaleString("pt-BR");
+    };
+
+    const emit = nfe.emitente || {};
+    const emitEndereco = emit.endereco || {};
+    const empresaNome = emit.nome || "Celebrar Festas e Embalagens";
+    const empresaEndereco = [
+      emitEndereco.logradouro || "-",
+      emitEndereco.numero || "S/N",
+      emitEndereco.complemento || "",
+      emitEndereco.bairro ? `- ${emitEndereco.bairro}` : "",
+      emitEndereco.cidade ? `- ${emitEndereco.cidade}/${emitEndereco.uf || ""}` : "",
+      emitEndereco.cep ? `- CEP ${emitEndereco.cep}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const empresaTelefone = emit.fone || "-";
+
+    const cliente = venda?.cliente || {};
+    const dest = nfe.destinatario || {};
+    const destEndereco = dest.endereco || {};
+    const documentoDest =
+      dest.documento || String(cliente?.documento || "").replace(/\D/g, "");
+    const documentoDestTipo =
+      dest.documentoTipo ||
+      (documentoDest.length === 14
+        ? "CNPJ"
+        : documentoDest.length === 11
+          ? "CPF"
+          : "CPF/CNPJ");
+
+    const enderecoDestLogradouro =
+      venda?.endereco_rua || destEndereco.logradouro || cliente?.rua || "-";
+    const enderecoDestNumero =
+      venda?.endereco_numero || destEndereco.numero || cliente?.numero || "S/N";
+    const enderecoDestComplemento =
+      venda?.endereco_complemento ||
+      destEndereco.complemento ||
+      cliente?.complemento ||
+      "";
+    const enderecoDestBairro =
+      venda?.endereco_bairro || destEndereco.bairro || cliente?.bairro || "-";
+    const enderecoDestCidade =
+      venda?.endereco_cidade || destEndereco.cidade || cliente?.cidade || "-";
+    const enderecoDestUf =
+      venda?.endereco_estado || destEndereco.uf || cliente?.estado || "-";
+    const enderecoDestCep =
+      venda?.endereco_cep || destEndereco.cep || cliente?.cep || "-";
+    const enderecoDestLinha = `${enderecoDestLogradouro}, ${enderecoDestNumero}${
+      enderecoDestComplemento ? ` - ${enderecoDestComplemento}` : ""
+    }`;
+
+    const valorProdutos = itens.reduce(
+      (acc: number, it: any) =>
+        acc + toNumber(it?.qtd || 0) * toNumber(it?.preco_un_aplicado || 0),
+      0,
+    );
+    const valorFrete = toNumber(
+      venda?.frete ?? nfe?.totais?.vFrete ?? 0,
+    );
+    const valorOutros = toNumber(
+      venda?.outros ?? venda?.outrasDespesas ?? nfe?.totais?.vOutro ?? 0,
+    );
+    const baseIcms = valorProdutos;
+    const valorIcms = toNumber(nfe?.totais?.vICMS ?? 0);
+    const valorTotalNota = valorProdutos + valorFrete + valorOutros;
+
     const itensRows = itens
-      .map((it: any) => {
-        const nome = it?.produto?.nome || it?.produtoNome || "Item";
-        const qtd = Number(it?.qtd || 0);
-        const unit = Number(it?.preco_un_aplicado || 0);
+      .map((it: any, idx: number) => {
+        const codigo =
+          it?.produto?.codigo_barras || it?.produtoId || String(idx + 1);
+        const descricao = it?.produto?.nome || it?.produtoNome || "Item";
+        const unidade = it?.produto?.embalagemUnidade || "UN";
+        const qtd = toNumber(it?.qtd || 0);
+        const unit = toNumber(it?.preco_un_aplicado || 0);
         const subtotalItem = qtd * unit;
+        const baseIcmsItem = subtotalItem;
+        const valorIcmsItem = 0;
+        const aliquota = "0,00%";
         return `<tr>
-          <td>${escapeHtml(nome)}</td>
-          <td class="right">${qtd.toLocaleString("pt-BR")}</td>
-          <td class="right">${unit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-          <td class="right">${subtotalItem.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+          <td>${escapeHtml(codigo)}</td>
+          <td>${escapeHtml(descricao)}</td>
+          <td class="center">${escapeHtml(unidade)}</td>
+          <td class="right">${qtd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
+          <td class="right">${formatMoney(unit)}</td>
+          <td class="right">${formatMoney(baseIcmsItem)}</td>
+          <td class="right">${formatMoney(valorIcmsItem)}</td>
+          <td class="right">${aliquota}</td>
         </tr>`;
       })
       .join("");
 
-    const totalVenda = Number(venda?.total || 0);
-    const dataVenda = venda?.data_venda
-      ? new Date(venda.data_venda).toLocaleString("pt-BR")
-      : new Date().toLocaleString("pt-BR");
+    const dataNota = formatDateTime(nfe?.dataAutorizacao || venda?.data_venda);
+    const protocoloAutorizacao = nfe?.protocolo || "-";
+    const serieNota = nfe?.serie ?? "-";
+    const numeroNota = nfe?.numero ?? "-";
+    const naturezaOperacao = nfe?.naturezaOperacao || "VENDA DIRETA";
 
     const html = `<!doctype html>
 <html lang="pt-BR">
@@ -233,61 +324,135 @@ export function VendaDiretaTab() {
     <meta charset="UTF-8" />
     <title>DANFE NF-e</title>
     <style>
-      @page { size: A4; margin: 12mm; }
-      body { font-family: Arial, sans-serif; color: #111; margin: 0; }
+      @page { size: A4 portrait; margin: 1cm; }
+      body { font-family: Arial, sans-serif; color: #111; margin: 0; font-size: 11px; }
       .sheet { width: 100%; }
-      .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #111; padding-bottom: 10px; margin-bottom: 10px; }
-      h1 { font-size: 20px; margin: 0; }
-      .sub { font-size: 12px; margin-top: 4px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 12px; margin-bottom: 10px; }
-      .label { font-weight: bold; }
-      table { width: 100%; border-collapse: collapse; font-size: 12px; }
-      th, td { border: 1px solid #333; padding: 6px; }
-      th { background: #f3f4f6; text-align: left; }
+      .box { border: 1px solid #000; margin-bottom: 6px; }
+      .header-grid { display: grid; grid-template-columns: 38% 26% 36%; gap: 6px; }
+      .company { display: flex; gap: 8px; padding: 6px; min-height: 116px; }
+      .logo { width: 84px; height: 84px; object-fit: contain; border: 1px solid #999; padding: 2px; }
+      .company h2 { margin: 0 0 4px; font-size: 12px; line-height: 1.3; }
+      .company .line { margin: 2px 0; line-height: 1.3; }
+      .nf-box, .access-box { padding: 6px; min-height: 116px; }
+      .nf-title { font-size: 16px; font-weight: 700; text-align: center; margin: 0 0 6px; }
+      .center { text-align: center; }
+      .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; background: #efefef; padding: 4px 6px; border-bottom: 1px solid #000; }
+      .info-line { padding: 4px 6px; display: grid; gap: 6px; }
+      .line-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
+      .line-7 { grid-template-columns: 2fr 1fr 2fr 1fr 1.5fr 0.6fr 1fr; }
+      .line-6 { grid-template-columns: 1.3fr 1fr 1.5fr 1fr 1fr 1.3fr; }
+      .field b { display: block; font-size: 10px; margin-bottom: 2px; text-transform: uppercase; }
+      table { width: 100%; border-collapse: collapse; font-size: 10px; }
+      th, td { border: 1px solid #000; padding: 4px; vertical-align: top; }
+      th { background: #efefef; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 9px; }
       .right { text-align: right; }
-      .totais { margin-top: 10px; width: 320px; margin-left: auto; font-size: 13px; }
-      .totais div { display: flex; justify-content: space-between; padding: 4px 0; }
-      .footer { margin-top: 14px; font-size: 11px; border-top: 1px solid #111; padding-top: 8px; word-break: break-all; }
+      .canhoto { margin-top: 8px; border: 1px dashed #000; padding: 8px; font-size: 10px; }
+      .canhoto .title { font-weight: 700; margin-bottom: 6px; }
+      .signature { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .signature div { border-top: 1px solid #000; padding-top: 4px; text-align: center; min-height: 20px; }
+      .muted { color: #333; font-size: 10px; line-height: 1.35; }
     </style>
   </head>
   <body>
     <div class="sheet">
-      <div class="head">
-        <div>
-          <h1>DANFE - NF-e</h1>
-          <div class="sub">Documento Auxiliar da Nota Fiscal Eletrônica</div>
-          <div class="sub">Emitida em homologação (sem valor fiscal)</div>
+      <div class="header-grid">
+        <div class="box company">
+          <img src="${logoLoja}" alt="Logo da loja" class="logo" />
+          <div>
+            <h2>${escapeHtml(empresaNome)}</h2>
+            <div class="line"><b>Endereço:</b> ${escapeHtml(empresaEndereco)}</div>
+            <div class="line"><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
+          </div>
         </div>
-        <div class="sub"><strong>Série/Número:</strong> ${escapeHtml(nfe.serie || "-")} / ${escapeHtml(nfe.numero || "-")}</div>
+        <div class="box nf-box">
+          <div class="nf-title">DANFE</div>
+          <div class="center">Documento Auxiliar da Nota Fiscal Eletrônica</div>
+          <div class="center"><b>Nota de Saída</b></div>
+          <div class="center" style="margin-top:8px"><b>Número:</b> ${escapeHtml(numeroNota)}</div>
+          <div class="center"><b>Série:</b> ${escapeHtml(serieNota)}</div>
+        </div>
+        <div class="box access-box">
+          <div><b>Chave de Acesso</b></div>
+          <div style="word-break: break-all; margin: 4px 0 6px;">${escapeHtml(nfe.chaveAcesso || "-")}</div>
+          <div class="muted">Consulta de autenticidade no portal nacional da NF-e em www.nfe.fazenda.gov.br/portal ou no site da Sefaz autorizada.</div>
+          <div style="margin-top: 8px;"><b>Protocolo de autorização de uso</b></div>
+          <div>${escapeHtml(`${protocoloAutorizacao} - ${dataNota}`)}</div>
+        </div>
       </div>
 
-      <div class="grid">
-        <div><span class="label">Venda:</span> ${escapeHtml(venda?.codigo || venda?.id || "-")}</div>
-        <div><span class="label">Data:</span> ${escapeHtml(dataVenda)}</div>
-        <div><span class="label">Cliente:</span> ${escapeHtml(venda?.cliente?.nome || "-")}</div>
-        <div><span class="label">Pagamento:</span> ${escapeHtml(resolvePagamentoLabel(venda?.tipo_pagamento))}</div>
+      <div class="box">
+        <div class="section-title">Complemento do Cabeçalho</div>
+        <div class="info-line line-4">
+          <div class="field"><b>Natureza da Operação</b>${escapeHtml(naturezaOperacao)}</div>
+          <div class="field"><b>Inscrição Estadual</b>${escapeHtml(emit.ie || "-")}</div>
+          <div class="field"><b>CNPJ</b>${escapeHtml(emit.cnpj || "-")}</div>
+          <div class="field"><b>Data da Nota Fiscal</b>${escapeHtml(dataNota)}</div>
+        </div>
       </div>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Produto</th>
-            <th class="right">Qtd</th>
-            <th class="right">Unitário</th>
-            <th class="right">Subtotal</th>
-          </tr>
-        </thead>
-        <tbody>${itensRows}</tbody>
-      </table>
-
-      <div class="totais">
-        <div><strong>Total NF-e</strong><strong>${totalVenda.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></div>
+      <div class="box">
+        <div class="section-title">Destinatário</div>
+        <div class="info-line line-7">
+          <div class="field"><b>Nome</b>${escapeHtml(dest.nome || cliente?.nome || "-")}</div>
+          <div class="field"><b>${escapeHtml(documentoDestTipo)}</b>${escapeHtml(documentoDest || "-")}</div>
+          <div class="field"><b>Endereço</b>${escapeHtml(enderecoDestLinha)}</div>
+          <div class="field"><b>Bairro</b>${escapeHtml(enderecoDestBairro)}</div>
+          <div class="field"><b>Cidade</b>${escapeHtml(enderecoDestCidade)}</div>
+          <div class="field"><b>UF</b>${escapeHtml(enderecoDestUf)}</div>
+          <div class="field"><b>CEP</b>${escapeHtml(enderecoDestCep)}</div>
+        </div>
+        <div class="info-line" style="grid-template-columns: 1fr;">
+          <div class="field"><b>Inscrição Estadual</b>${escapeHtml(dest.ie || "-")}</div>
+        </div>
       </div>
 
-      <div class="footer">
-        <div><strong>Protocolo:</strong> ${escapeHtml(nfe.protocolo || "-")}</div>
-        <div><strong>Chave de Acesso:</strong> ${escapeHtml(nfe.chaveAcesso || "-")}</div>
-        <div><strong>Consulta:</strong> ${escapeHtml(nfe.consultaUrl || "-")}</div>
+      <div class="box">
+        <div class="section-title">Valores da Nota</div>
+        <div class="info-line line-6">
+          <div class="field"><b>Base de Cálculo do ICMS</b>${formatMoney(baseIcms)}</div>
+          <div class="field"><b>Valor do ICMS</b>${formatMoney(valorIcms)}</div>
+          <div class="field"><b>Valor Total dos Produtos</b>${formatMoney(valorProdutos)}</div>
+          <div class="field"><b>Frete</b>${formatMoney(valorFrete)}</div>
+          <div class="field"><b>Outros Valores</b>${formatMoney(valorOutros)}</div>
+          <div class="field"><b>Valor Total da Nota</b>${formatMoney(valorTotalNota)}</div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="section-title">Dados dos Produtos</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 12%;">Código</th>
+              <th style="width: 34%;">Descrição do Produto</th>
+              <th style="width: 8%;">Unidade</th>
+              <th style="width: 10%;" class="right">Quantidade</th>
+              <th style="width: 12%;" class="right">Valor Unitário</th>
+              <th style="width: 12%;" class="right">Base p/ ICMS</th>
+              <th style="width: 7%;" class="right">Valor ICMS</th>
+              <th style="width: 5%;" class="right">Alíquota</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              itensRows ||
+              `<tr><td colspan="8" class="center">Sem itens na venda.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="canhoto">
+        <div class="title">Canhoto de Recebimento</div>
+        <div>
+          Recebemos de Celebrar Festas e Embalagens o(s) produto(s) constante(s) na Nota Fiscal nº
+          <b> ${escapeHtml(numeroNota)} </b> Série <b>${escapeHtml(serieNota)}</b>.
+        </div>
+        <div class="signature">
+          <div>Data de recebimento</div>
+          <div>Nome legível</div>
+          <div>CPF ou Identidade do recebedor</div>
+        </div>
       </div>
     </div>
   </body>
@@ -409,7 +574,10 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        showFiscalFeedback(result, "Venda atualizada com sucesso.", vendaParaImpressao);
+        const vendaRetornada = result?.venda
+          ? { ...vendaParaImpressao, ...result.venda }
+          : vendaParaImpressao;
+        showFiscalFeedback(result, "Venda atualizada com sucesso.", vendaRetornada);
         setEditingId(null);
       } else {
         // Criar nova venda
