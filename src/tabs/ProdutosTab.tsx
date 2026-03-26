@@ -279,7 +279,7 @@ export function ProdutosTab() {
               width: 2.4cm;
               height: auto;
               align-self: center;
-              margin: 12px, 0, 0, 16px;
+              margin: 16px, 0, 0, 24px;
             }
             .label-desc {
               font-size: 14px;
