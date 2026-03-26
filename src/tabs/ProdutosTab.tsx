@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoUrl from "../img/logo.jpg";
+import logoUrl from "../img/logo.svg";
 import { Lote, Produto, ProdutoDetalhesResponse, Role } from "../types";
 import { formatDate, formatMoney } from "../utils";
 
