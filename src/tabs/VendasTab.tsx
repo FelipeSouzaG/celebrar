@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { Modal, Table } from "../components/Shared";
+import logoLoja from "../img/logo.svg";
 import { ContaBancaria, Role, SessaoCaixaAdmin } from "../types";
 import { formatDate, formatMoney } from "../utils";
 
@@ -187,6 +188,199 @@ export function VendasTab() {
         }
       },
     });
+  };
+
+  const escapeHtml = (value: any) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const getXmlTagBlock = (xml: string, tag: string) => {
+    if (!xml) return "";
+    const rgx = new RegExp(
+      `<(?:\\w+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,
+      "i",
+    );
+    const match = xml.match(rgx);
+    return match?.[1]?.trim() || "";
+  };
+
+  const getXmlTagValue = (xml: string, tag: string) => {
+    const block = getXmlTagBlock(xml, tag);
+    if (!block) return "";
+    return block.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+  };
+
+  const printNfceDanfe = async (venda: any) => {
+    try {
+      const fiscal = await adminApi.getVendaFiscalXml(venda.id);
+      if (String(fiscal?.modelo || "") !== "65") {
+        alert("Esta venda não possui NFC-e (modelo 65) para impressão.");
+        return;
+      }
+
+      const xml = fiscal.xml || "";
+      const statusCode = String(fiscal.statusCode || "").trim();
+      if (statusCode !== "100") {
+        alert(
+          `NFC-e não autorizada para esta venda. [${fiscal.statusCode || "SEM_COD"}] ${fiscal.statusMessage || "Sem detalhe."}`,
+        );
+        return;
+      }
+
+      const emitBlock = getXmlTagBlock(xml, "emit");
+      const enderEmitBlock = getXmlTagBlock(emitBlock, "enderEmit");
+      const icmsTotBlock = getXmlTagBlock(xml, "ICMSTot");
+      const qrCodeUrl = getXmlTagValue(xml, "qrCode");
+      const consultaUrl = getXmlTagValue(xml, "urlChave");
+      const protocolo = fiscal.protocolo || getXmlTagValue(xml, "nProt") || "-";
+      const chave = fiscal.chaveAcesso || getXmlTagValue(xml, "chNFe") || "-";
+      const numero = fiscal.numero || getXmlTagValue(xml, "nNF") || "-";
+      const serie = fiscal.serie || getXmlTagValue(xml, "serie") || "-";
+      const cnpj = getXmlTagValue(emitBlock, "CNPJ") || "-";
+      const ie = getXmlTagValue(emitBlock, "IE") || "-";
+      const empresaNome =
+        getXmlTagValue(emitBlock, "xNome") || "CELEBRAR FESTAS EMBALAGENS LTDA";
+      const enderecoEmpresa = [
+        getXmlTagValue(enderEmitBlock, "xLgr"),
+        getXmlTagValue(enderEmitBlock, "nro")
+          ? `, ${getXmlTagValue(enderEmitBlock, "nro")}`
+          : "",
+        getXmlTagValue(enderEmitBlock, "xCpl")
+          ? ` - ${getXmlTagValue(enderEmitBlock, "xCpl")}`
+          : "",
+        getXmlTagValue(enderEmitBlock, "xBairro")
+          ? ` - ${getXmlTagValue(enderEmitBlock, "xBairro")}`
+          : "",
+        getXmlTagValue(enderEmitBlock, "xMun") &&
+        getXmlTagValue(enderEmitBlock, "UF")
+          ? ` - ${getXmlTagValue(enderEmitBlock, "xMun")}/${getXmlTagValue(enderEmitBlock, "UF")}`
+          : "",
+        getXmlTagValue(enderEmitBlock, "CEP")
+          ? ` - CEP ${getXmlTagValue(enderEmitBlock, "CEP")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("");
+
+      const totalTributos = Number(getXmlTagValue(icmsTotBlock, "vTotTrib") || 0);
+      const paymentLabel =
+        venda.contaBancaria?.nome || venda.tipo_pagamento || "Dinheiro";
+      const totalValue = Number(venda.total || 0);
+
+      const itensHtml = (venda.itens || [])
+        .map(
+          (item: any) =>
+            `<tr>
+              <td style="padding:4px 0;">${escapeHtml(item.produto?.nome || "-")}</td>
+              <td style="padding:4px 0; text-align:center;">${Number(item.qtd || 0)}</td>
+              <td style="padding:4px 0; text-align:right;">${(Number(item.preco_un_aplicado || 0) * Number(item.qtd || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+            </tr>`,
+        )
+        .join("");
+
+      const dataAutorizacao = fiscal.dataAutorizacao
+        ? formatDate(fiscal.dataAutorizacao)
+        : formatDate(venda.data_venda);
+
+      const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>DANFE NFC-e</title>
+    <style>
+      body { font-family: monospace; width: 300px; margin: 0 auto; color: #000; }
+      h2, p { margin: 0; }
+      .center { text-align: center; }
+      .sep { border-top: 1px dashed #000; margin: 8px 0; }
+      .small { font-size: 11px; }
+      .tiny { font-size: 10px; }
+      .title { font-size: 12px; font-weight: 700; }
+      table { width: 100%; border-collapse: collapse; font-size: 11px; }
+      .logo { width: 74px; height: auto; margin: 0 auto 4px; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="center">
+      <img src="${logoLoja}" alt="Logo da loja" class="logo" />
+      <p class="title">${escapeHtml(empresaNome)}</p>
+      <p class="small"><strong>CNPJ:</strong> ${escapeHtml(cnpj)}</p>
+      <p class="small"><strong>I.E:</strong> ${escapeHtml(ie)}</p>
+      <p class="tiny">${escapeHtml(enderecoEmpresa || "-")}</p>
+    </div>
+    <div class="sep"></div>
+    <div class="center">
+      <h2>DANFE NFC-e</h2>
+      <p class="small">Documento Auxiliar da Nota Fiscal de Consumidor Eletrônica</p>
+      <p class="tiny">Não permite aproveitamento de crédito de ICMS</p>
+    </div>
+    <div class="sep"></div>
+    <p class="small"><strong>Data:</strong> ${escapeHtml(dataAutorizacao)}</p>
+    <p class="small"><strong>Ticket:</strong> ${escapeHtml(venda.codigo || venda.id)}</p>
+    <p class="small"><strong>Série/Número:</strong> ${escapeHtml(serie)} / ${escapeHtml(numero)}</p>
+    <div class="sep"></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="text-align:left;">Item</th>
+          <th style="text-align:center;">Qtd</th>
+          <th style="text-align:right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>${itensHtml || `<tr><td colspan="3" style="padding:4px 0;">Sem itens</td></tr>`}</tbody>
+    </table>
+    <div class="sep"></div>
+    <p class="small"><strong>Forma de pagamento:</strong> ${escapeHtml(paymentLabel)}</p>
+    <p class="small"><strong>Total pago:</strong> ${totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+    <div class="sep"></div>
+    <p class="small"><strong>Total de tributos:</strong> ${totalTributos.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+    <div class="sep"></div>
+    <p class="small"><strong>Protocolo:</strong> ${escapeHtml(protocolo)}</p>
+    <p class="small"><strong>Chave:</strong><br/>${escapeHtml(chave)}</p>
+    <div class="sep"></div>
+    <p class="tiny">Consulte pela chave em:</p>
+    <p class="tiny">${escapeHtml(consultaUrl || "-")}</p>
+    <div class="sep"></div>
+    <p class="tiny">QR Code:</p>
+    <p class="tiny">${escapeHtml(qrCodeUrl || "Indisponível no XML")}</p>
+  </body>
+</html>`;
+
+      const frame = document.createElement("iframe");
+      frame.style.position = "fixed";
+      frame.style.right = "0";
+      frame.style.bottom = "0";
+      frame.style.width = "0";
+      frame.style.height = "0";
+      frame.style.border = "0";
+      document.body.appendChild(frame);
+
+      const win = frame.contentWindow;
+      if (!win) {
+        document.body.removeChild(frame);
+        throw new Error("Não foi possível abrir a janela de impressão.");
+      }
+
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+
+      setTimeout(() => {
+        win.focus();
+        win.print();
+        setTimeout(() => {
+          if (document.body.contains(frame)) document.body.removeChild(frame);
+        }, 500);
+      }, 200);
+    } catch (e: any) {
+      alert(
+        e?.message ||
+          "Não foi possível carregar o XML fiscal desta venda para impressão.",
+      );
+    }
   };
 
   return (
@@ -728,10 +922,12 @@ export function VendasTab() {
                     <thead className="bg-slate-100 text-xs uppercase text-slate-500 sticky top-0">
                       <tr>
                         <th className="p-3">Hora</th>
+                        <th className="p-3">Ticket (VC)</th>
+                        <th className="p-3">NFC-e</th>
                         <th className="p-3">Pagamento</th>
                         <th className="p-3 text-right">Valor</th>
                         <th className="p-3">Itens</th>
-                        {isAdmin && <th className="p-3 text-center">Ações</th>}
+                        <th className="p-3 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -740,10 +936,19 @@ export function VendasTab() {
                           v.contaBancaria?.nome ||
                           v.tipo_pagamento ||
                           "Dinheiro";
+                        const podeImprimirNfce =
+                          String(v.notaFiscalModelo || "") === "65" &&
+                          String(v.notaFiscalStatusCode || "") === "100";
                         return (
                           <tr key={v.id} className="hover:bg-slate-50">
                             <td className="p-3 text-slate-600 font-mono">
                               {formatDate(v.data_venda).split(" ")[1]}
+                            </td>
+                            <td className="p-3 text-slate-700 font-mono text-xs">
+                              {v.codigo || v.id}
+                            </td>
+                            <td className="p-3 text-slate-700 font-bold">
+                              {v.notaFiscalNumero || "-"}
                             </td>
                             <td className="p-3">
                               <span className="text-[10px] font-bold px-2 py-1 bg-slate-100 rounded border border-slate-200">
@@ -760,17 +965,31 @@ export function VendasTab() {
                                 </div>
                               ))}
                             </td>
-                            {isAdmin && (
-                              <td className="p-3 text-center">
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
                                 <button
-                                  onClick={() => handleDeleteVenda(v.id)}
-                                  className="text-rose-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded transition-colors"
-                                  title="Excluir Venda (Admin)"
+                                  onClick={() => printNfceDanfe(v)}
+                                  disabled={!podeImprimirNfce}
+                                  className="text-indigo-600 hover:text-indigo-700 disabled:text-slate-300 disabled:cursor-not-allowed p-1 hover:bg-indigo-50 rounded transition-colors"
+                                  title={
+                                    podeImprimirNfce
+                                      ? "Imprimir DANFE NFC-e"
+                                      : "NFC-e não autorizada para este ticket"
+                                  }
                                 >
-                                  <Icons.Trash />
+                                  <Icons.Receipt />
                                 </button>
-                              </td>
-                            )}
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => handleDeleteVenda(v.id)}
+                                    className="text-rose-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded transition-colors"
+                                    title="Excluir Venda (Admin)"
+                                  >
+                                    <Icons.Trash />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
