@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { Modal, Table } from "../components/Shared";
-import logoLoja from "../img/logo.svg";
+import logoLoja from "../img/logo.png";
 import { ContaBancaria, Role, SessaoCaixaAdmin } from "../types";
 import { formatDate, formatMoney } from "../utils";
 
@@ -266,23 +267,40 @@ export function VendasTab() {
         .filter(Boolean)
         .join("");
 
-      const totalTributos = Number(getXmlTagValue(icmsTotBlock, "vTotTrib") || 0);
+      const toNumber = (value: any) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      const totalTributos = toNumber(getXmlTagValue(icmsTotBlock, "vTotTrib") || 0);
       const paymentLabel =
         venda.contaBancaria?.nome || venda.tipo_pagamento || "Dinheiro";
-      const totalValue = Number(venda.total || 0);
+      const totalValue = toNumber(venda.total || getXmlTagValue(icmsTotBlock, "vNF"));
+      let qrCodeImage = "";
+      if (qrCodeUrl) {
+        try {
+          qrCodeImage = await QRCode.toDataURL(qrCodeUrl, {
+            width: 170,
+            margin: 1,
+            errorCorrectionLevel: "M",
+          });
+        } catch {
+          qrCodeImage = "";
+        }
+      }
 
-      const itensHtml = (venda.itens || [])
+      const itensHtml = (Array.isArray(venda.itens) ? venda.itens : [])
         .map(
           (item: any) =>
             `<tr>
               <td style="padding:4px 0;">${escapeHtml(item.produto?.nome || "-")}</td>
-              <td style="padding:4px 0; text-align:center;">${Number(item.qtd || 0)}</td>
-              <td style="padding:4px 0; text-align:right;">${(Number(item.preco_un_aplicado || 0) * Number(item.qtd || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+              <td style="padding:4px 0; text-align:center;">${toNumber(item.qtd || 0)}</td>
+              <td style="padding:4px 0; text-align:right;">${(toNumber(item.preco_un_aplicado || 0) * toNumber(item.qtd || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
             </tr>`,
         )
         .join("");
 
-      const dataAutorizacao = fiscal.dataAutorizacao
+      const dataImpressao = fiscal.dataAutorizacao
         ? formatDate(fiscal.dataAutorizacao)
         : formatDate(venda.data_venda);
 
@@ -299,6 +317,7 @@ export function VendasTab() {
       .small { font-size: 11px; }
       .tiny { font-size: 10px; }
       .title { font-size: 12px; font-weight: 700; }
+      .mt4 { margin-top: 4px; }
       table { width: 100%; border-collapse: collapse; font-size: 11px; }
       .logo { width: 74px; height: auto; margin: 0 auto 4px; display: block; }
     </style>
@@ -309,7 +328,7 @@ export function VendasTab() {
       <p class="title">${escapeHtml(empresaNome)}</p>
       <p class="small"><strong>CNPJ:</strong> ${escapeHtml(cnpj)}</p>
       <p class="small"><strong>I.E:</strong> ${escapeHtml(ie)}</p>
-      <p class="tiny">${escapeHtml(enderecoEmpresa || "-")}</p>
+      <p class="tiny mt4">${escapeHtml(enderecoEmpresa || "-")}</p>
     </div>
     <div class="sep"></div>
     <div class="center">
@@ -318,8 +337,7 @@ export function VendasTab() {
       <p class="tiny">Não permite aproveitamento de crédito de ICMS</p>
     </div>
     <div class="sep"></div>
-    <p class="small"><strong>Data:</strong> ${escapeHtml(dataAutorizacao)}</p>
-    <p class="small"><strong>Ticket:</strong> ${escapeHtml(venda.codigo || venda.id)}</p>
+    <p class="small"><strong>Data:</strong> ${escapeHtml(dataImpressao)}</p>
     <p class="small"><strong>Série/Número:</strong> ${escapeHtml(serie)} / ${escapeHtml(numero)}</p>
     <div class="sep"></div>
     <table>
@@ -343,9 +361,13 @@ export function VendasTab() {
     <div class="sep"></div>
     <p class="tiny">Consulte pela chave em:</p>
     <p class="tiny">${escapeHtml(consultaUrl || "-")}</p>
-    <div class="sep"></div>
-    <p class="tiny">QR Code:</p>
-    <p class="tiny">${escapeHtml(qrCodeUrl || "Indisponível no XML")}</p>
+    <div class="center mt4">
+      ${
+        qrCodeImage
+          ? `<img src="${qrCodeImage}" alt="QR Code NFC-e" style="width:150px;height:150px;" />`
+          : `<p class="tiny">QR Code indisponível</p>`
+      }
+    </div>
   </body>
 </html>`;
 
