@@ -2,12 +2,13 @@ import { FormEvent, useEffect, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoLoja from "../img/logo.png";
+import logoLoja from "../img/logo.svg";
 import {
   Cliente,
   ContaBancaria,
   NfeResult,
   Produto,
+  VendaFiscalXmlResponse,
   VendaDiretaMutationResponse,
 } from "../types";
 import { formatDate, formatDateOnly, toInputDate } from "../utils";
@@ -49,6 +50,7 @@ export function VendaDiretaTab() {
   }>({ open: false, title: "", message: "", onConfirm: () => {} });
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [selectedVenda, setSelectedVenda] = useState<any | null>(null);
+  const [detailsTab, setDetailsTab] = useState<"venda" | "notaFiscal">("venda");
   const [filterQuery, setFilterQuery] = useState("");
   const [filterDataCriacao, setFilterDataCriacao] = useState("");
   const [filterDataEntrega, setFilterDataEntrega] = useState("");
@@ -204,6 +206,99 @@ export function VendaDiretaTab() {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
 
+  const getXmlTagBlock = (xml: string, tag: string) => {
+    if (!xml) return "";
+    const rgx = new RegExp(
+      `<(?:\\w+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,
+      "i",
+    );
+    const match = xml.match(rgx);
+    return match?.[1]?.trim() || "";
+  };
+
+  const getXmlTagValue = (xml: string, tag: string) => {
+    const block = getXmlTagBlock(xml, tag);
+    if (!block) return "";
+    return block.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+  };
+
+  const buildNfeFromFiscalXml = (
+    fiscal: VendaFiscalXmlResponse,
+    venda: any,
+  ): NfeResult => {
+    const xml = fiscal?.xml || "";
+    const emitBlock = getXmlTagBlock(xml, "emit");
+    const enderEmitBlock = getXmlTagBlock(emitBlock, "enderEmit");
+    const destBlock = getXmlTagBlock(xml, "dest");
+    const enderDestBlock = getXmlTagBlock(destBlock, "enderDest");
+    const icmsTotBlock = getXmlTagBlock(xml, "ICMSTot");
+    const dhEmi = getXmlTagValue(xml, "dhEmi");
+    const naturezaOperacao = getXmlTagValue(xml, "natOp");
+    const consultaUrl = getXmlTagValue(xml, "urlChave");
+    const numero = Number(fiscal.numero || getXmlTagValue(xml, "nNF") || 0) || 0;
+    const serie = Number(fiscal.serie || getXmlTagValue(xml, "serie") || 0) || 0;
+
+    return {
+      enabled: true,
+      attempted: true,
+      authorized: String(fiscal.statusCode || "").trim() === "100",
+      homologacao: getXmlTagValue(xml, "tpAmb") === "2",
+      naturezaOperacao: naturezaOperacao || "VENDA DIRETA",
+      dataEmissao: dhEmi || venda?.data_venda,
+      chaveAcesso: fiscal.chaveAcesso || getXmlTagValue(xml, "chNFe"),
+      numero: numero || undefined,
+      serie: serie || undefined,
+      protocolo: fiscal.protocolo || getXmlTagValue(xml, "nProt"),
+      dataAutorizacao:
+        fiscal.dataAutorizacao || getXmlTagValue(xml, "dhRecbto") || undefined,
+      statusCode: fiscal.statusCode || undefined,
+      statusMessage: fiscal.statusMessage || undefined,
+      consultaUrl: consultaUrl || undefined,
+      emitente: {
+        nome: getXmlTagValue(emitBlock, "xNome") || undefined,
+        cnpj: getXmlTagValue(emitBlock, "CNPJ") || undefined,
+        ie: getXmlTagValue(emitBlock, "IE") || undefined,
+        fone: getXmlTagValue(enderEmitBlock, "fone") || undefined,
+        endereco: {
+          logradouro: getXmlTagValue(enderEmitBlock, "xLgr") || undefined,
+          numero: getXmlTagValue(enderEmitBlock, "nro") || undefined,
+          complemento: getXmlTagValue(enderEmitBlock, "xCpl") || undefined,
+          bairro: getXmlTagValue(enderEmitBlock, "xBairro") || undefined,
+          cidade: getXmlTagValue(enderEmitBlock, "xMun") || undefined,
+          uf: getXmlTagValue(enderEmitBlock, "UF") || undefined,
+          cep: getXmlTagValue(enderEmitBlock, "CEP") || undefined,
+        },
+      },
+      destinatario: {
+        nome:
+          getXmlTagValue(destBlock, "xNome") || venda?.cliente?.nome || undefined,
+        documento:
+          getXmlTagValue(destBlock, "CNPJ") ||
+          getXmlTagValue(destBlock, "CPF") ||
+          undefined,
+        documentoTipo: getXmlTagValue(destBlock, "CNPJ") ? "CNPJ" : "CPF",
+        ie: getXmlTagValue(destBlock, "IE") || undefined,
+        endereco: {
+          logradouro: getXmlTagValue(enderDestBlock, "xLgr") || undefined,
+          numero: getXmlTagValue(enderDestBlock, "nro") || undefined,
+          complemento: getXmlTagValue(enderDestBlock, "xCpl") || undefined,
+          bairro: getXmlTagValue(enderDestBlock, "xBairro") || undefined,
+          cidade: getXmlTagValue(enderDestBlock, "xMun") || undefined,
+          uf: getXmlTagValue(enderDestBlock, "UF") || undefined,
+          cep: getXmlTagValue(enderDestBlock, "CEP") || undefined,
+        },
+      },
+      totais: {
+        vBC: getXmlTagValue(icmsTotBlock, "vBC") || undefined,
+        vICMS: getXmlTagValue(icmsTotBlock, "vICMS") || undefined,
+        vProd: getXmlTagValue(icmsTotBlock, "vProd") || undefined,
+        vFrete: getXmlTagValue(icmsTotBlock, "vFrete") || undefined,
+        vOutro: getXmlTagValue(icmsTotBlock, "vOutro") || undefined,
+        vNF: getXmlTagValue(icmsTotBlock, "vNF") || undefined,
+      },
+    };
+  };
+
   const printNfeA4 = (nfe: NfeResult, venda: any) => {
     if (!nfe?.authorized) return;
 
@@ -231,7 +326,9 @@ export function VendaDiretaTab() {
       emitEndereco.numero || "S/N",
       emitEndereco.complemento || "",
       emitEndereco.bairro ? `- ${emitEndereco.bairro}` : "",
-      emitEndereco.cidade ? `- ${emitEndereco.cidade}/${emitEndereco.uf || ""}` : "",
+      emitEndereco.cidade
+        ? `- ${emitEndereco.cidade}/${emitEndereco.uf || ""}`
+        : "",
       emitEndereco.cep ? `- CEP ${emitEndereco.cep}` : "",
     ]
       .filter(Boolean)
@@ -277,9 +374,7 @@ export function VendaDiretaTab() {
         acc + toNumber(it?.qtd || 0) * toNumber(it?.preco_un_aplicado || 0),
       0,
     );
-    const valorFrete = toNumber(
-      venda?.frete ?? nfe?.totais?.vFrete ?? 0,
-    );
+    const valorFrete = toNumber(venda?.frete ?? nfe?.totais?.vFrete ?? 0);
     const valorOutros = toNumber(
       venda?.outros ?? venda?.outrasDespesas ?? nfe?.totais?.vOutro ?? 0,
     );
@@ -486,6 +581,42 @@ export function VendaDiretaTab() {
     }, 200);
   };
 
+  const handlePrintVendaDiretaDanfe = async (venda: any) => {
+    if (!venda?.id) return;
+    try {
+      const fiscal = await adminApi.getVendaFiscalXml(venda.id);
+      if (String(fiscal?.modelo || "") !== "55") {
+        setAlertModal({
+          open: true,
+          title: "Nota Fiscal",
+          message:
+            "Esta venda não possui NF-e (modelo 55) autorizada para impressão.",
+        });
+        return;
+      }
+
+      const nfe = buildNfeFromFiscalXml(fiscal, venda);
+      if (!nfe.authorized) {
+        setAlertModal({
+          open: true,
+          title: "Nota Fiscal",
+          message: `NF-e não autorizada para esta venda. [${nfe.statusCode || "SEM_COD"}] ${nfe.statusMessage || "Sem detalhe."}`,
+        });
+        return;
+      }
+
+      printNfeA4(nfe, venda);
+    } catch (err: any) {
+      setAlertModal({
+        open: true,
+        title: "Nota Fiscal",
+        message:
+          err?.message ||
+          "Não foi possível carregar o XML fiscal desta venda para impressão.",
+      });
+    }
+  };
+
   const showFiscalFeedback = (
     result: VendaDiretaMutationResponse | undefined,
     successMessage: string,
@@ -577,7 +708,11 @@ export function VendaDiretaTab() {
         const vendaRetornada = result?.venda
           ? { ...vendaParaImpressao, ...result.venda }
           : vendaParaImpressao;
-        showFiscalFeedback(result, "Venda atualizada com sucesso.", vendaRetornada);
+        showFiscalFeedback(
+          result,
+          "Venda atualizada com sucesso.",
+          vendaRetornada,
+        );
         setEditingId(null);
       } else {
         // Criar nova venda
@@ -599,7 +734,9 @@ export function VendaDiretaTab() {
           frete: form.frete || 0,
           status: form.status,
         });
-        const vendaRetornada = result?.venda ? { ...vendaParaImpressao, ...result.venda } : vendaParaImpressao;
+        const vendaRetornada = result?.venda
+          ? { ...vendaParaImpressao, ...result.venda }
+          : vendaParaImpressao;
         showFiscalFeedback(result, "Venda criada com sucesso.", vendaRetornada);
       }
       setModalOpen(false);
@@ -844,8 +981,7 @@ export function VendaDiretaTab() {
                     <div className="font-medium text-slate-800">{v.status}</div>
                     {v.data_entrega && (
                       <div className="text-xs text-slate-500">
-                        Entrega:{" "}
-                        {formatDateOnly(v.data_entrega)}
+                        Entrega: {formatDateOnly(v.data_entrega)}
                       </div>
                     )}
                   </td>
@@ -862,10 +998,12 @@ export function VendaDiretaTab() {
                               message: "Confirmar marcar como CONCLUIDO?",
                               onConfirm: async () => {
                                 try {
-                                  const result = await adminApi.updateVendaStatus(v.id, {
-                                    status: "CONCLUIDO",
-                                    contaBancariaId: v.contaBancariaId || null,
-                                  });
+                                  const result =
+                                    await adminApi.updateVendaStatus(v.id, {
+                                      status: "CONCLUIDO",
+                                      contaBancariaId:
+                                        v.contaBancariaId || null,
+                                    });
                                   await loadVendas();
                                   showFiscalFeedback(
                                     result,
@@ -899,7 +1037,9 @@ export function VendaDiretaTab() {
                                 estoque: prod?.estoque,
                                 qtd: it.qtd,
                                 preco_un_aplicado: it.preco_un_aplicado,
-                                produtoDetalhes: prod ? { produto: prod } : null,
+                                produtoDetalhes: prod
+                                  ? { produto: prod }
+                                  : null,
                               };
                             });
                             setEditingId(v.id);
@@ -949,6 +1089,7 @@ export function VendaDiretaTab() {
                       title="Detalhes"
                       onClick={() => {
                         setSelectedVenda(v);
+                        setDetailsTab("venda");
                         setDetailsModalOpen(true);
                       }}
                     >
@@ -1087,7 +1228,7 @@ export function VendaDiretaTab() {
                           setSelectedCliente({ id: c.id, nome: c.nome });
                           setClienteSuggestions([]);
                         }}
-                    >
+                      >
                         <div className="font-bold">{c.nome}</div>
                         <div className="text-xs text-slate-500">
                           {c.documento || c.contatoTelefone || ""}
@@ -1100,111 +1241,114 @@ export function VendaDiretaTab() {
             </div>
 
             <div className="grid grid-cols-6 gap-4">
-            <div className="col-span-3">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Rua
-              </label>
-              <input
-                className="w-full p-2.5 border rounded-lg"
-                value={form.endereco?.rua || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endereco: { ...form.endereco, rua: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="col-span-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Número
-              </label>
-              <input
-                className="w-full p-2.5 border rounded-lg"
-                value={form.endereco?.numero || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endereco: { ...form.endereco, numero: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Complemento
-              </label>
-              <input
-                className="w-full p-2.5 border rounded-lg"
-                value={form.endereco?.complemento || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endereco: { ...form.endereco, complemento: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Bairro
-              </label>
-              <input
-                className="w-full p-2.5 border rounded-lg"
-                value={form.endereco?.bairro || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endereco: { ...form.endereco, bairro: e.target.value },
-                  })
-                }
-              />
-            </div>
-            <div className="col-span-3">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                Cidade / Estado
-              </label>
-              <div className="flex gap-2">
+              <div className="col-span-3">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Rua
+                </label>
                 <input
                   className="w-full p-2.5 border rounded-lg"
-                  placeholder="Cidade"
-                  value={form.endereco?.cidade || ""}
+                  value={form.endereco?.rua || ""}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      endereco: { ...form.endereco, cidade: e.target.value },
+                      endereco: { ...form.endereco, rua: e.target.value },
                     })
                   }
                 />
+              </div>
+              <div className="col-span-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Número
+                </label>
                 <input
-                  className="w-24 p-2.5 border rounded-lg text-center"
-                  placeholder="UF"
-                  value={form.endereco?.estado || ""}
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.endereco?.numero || ""}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      endereco: { ...form.endereco, estado: e.target.value },
+                      endereco: { ...form.endereco, numero: e.target.value },
+                    })
+                  }
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Complemento
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.endereco?.complemento || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      endereco: {
+                        ...form.endereco,
+                        complemento: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Bairro
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.endereco?.bairro || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      endereco: { ...form.endereco, bairro: e.target.value },
+                    })
+                  }
+                />
+              </div>
+              <div className="col-span-3">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Cidade / Estado
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    className="w-full p-2.5 border rounded-lg"
+                    placeholder="Cidade"
+                    value={form.endereco?.cidade || ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        endereco: { ...form.endereco, cidade: e.target.value },
+                      })
+                    }
+                  />
+                  <input
+                    className="w-24 p-2.5 border rounded-lg text-center"
+                    placeholder="UF"
+                    value={form.endereco?.estado || ""}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        endereco: { ...form.endereco, estado: e.target.value },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="col-span-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  CEP
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.endereco?.cep || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      endereco: { ...form.endereco, cep: e.target.value },
                     })
                   }
                 />
               </div>
             </div>
-            <div className="col-span-1">
-              <label className="text-xs font-bold text-slate-500 uppercase">
-                CEP
-              </label>
-              <input
-                className="w-full p-2.5 border rounded-lg"
-                value={form.endereco?.cep || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    endereco: { ...form.endereco, cep: e.target.value },
-                  })
-                }
-              />
-            </div>
-          </div>
           </div>
 
           <div className="border border-slate-200 rounded-xl p-4 space-y-4">
@@ -1255,8 +1399,9 @@ export function VendaDiretaTab() {
                         className="p-2 hover:bg-slate-50 cursor-pointer text-sm"
                         onClick={async () => {
                           try {
-                            const detalhes =
-                              await adminApi.getProdutoDetalhes(p.id);
+                            const detalhes = await adminApi.getProdutoDetalhes(
+                              p.id,
+                            );
                             const qtdAtacado =
                               detalhes.produto.qtd_atacado || 0;
                             const precoInicial =
@@ -1499,15 +1644,9 @@ export function VendaDiretaTab() {
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                 >
-                  <option value="PEDIDO">
-                    Pedido (programação, não pago)
-                  </option>
-                  <option value="ENVIADO">
-                    Enviado (entrega, não pago)
-                  </option>
-                  <option value="ENTREGA">
-                    Entrega (pago, programado)
-                  </option>
+                  <option value="PEDIDO">Pedido (programação, não pago)</option>
+                  <option value="ENVIADO">Enviado (entrega, não pago)</option>
+                  <option value="ENTREGA">Entrega (pago, programado)</option>
                   <option value="CONCLUIDO">Concluído (pago e entregue)</option>
                 </select>
               </div>
@@ -1649,141 +1788,255 @@ export function VendaDiretaTab() {
         onClose={() => {
           setDetailsModalOpen(false);
           setSelectedVenda(null);
+          setDetailsTab("venda");
         }}
       >
         {!selectedVenda ? (
-          <div className="p-6 text-center text-slate-400">
-            Carregando...
-          </div>
+          <div className="p-6 text-center text-slate-400">Carregando...</div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-xs text-slate-400 uppercase">Código</div>
-                <div className="font-mono font-bold">
-                  {selectedVenda.codigo || selectedVenda.id}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-400 uppercase">Status</div>
-                <div className="font-bold">{selectedVenda.status}</div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-400 uppercase">Cliente</div>
-                <div className="font-bold">
-                  {selectedVenda.cliente?.nome || "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-400 uppercase">
-                  Data da Venda
-                </div>
-                <div>{formatDate(selectedVenda.data_venda)}</div>
-              </div>
+            <div className="border-b border-slate-200 flex gap-6">
+              <button
+                onClick={() => setDetailsTab("venda")}
+                className={`pb-3 text-sm font-bold border-b-2 transition-colors ${
+                  detailsTab === "venda"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Venda
+              </button>
+              <button
+                onClick={() => setDetailsTab("notaFiscal")}
+                className={`pb-3 text-sm font-bold border-b-2 transition-colors ${
+                  detailsTab === "notaFiscal"
+                    ? "border-indigo-600 text-indigo-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Nota Fiscal
+              </button>
             </div>
 
-            {(selectedVenda.status === "PEDIDO" ||
-              selectedVenda.status === "ENTREGA") && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm">
-                <div className="text-xs text-slate-400 uppercase mb-1">
-                  Entrega
+            {detailsTab === "venda" && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">Código</div>
+                    <div className="font-mono font-bold">
+                      {selectedVenda.codigo || selectedVenda.id}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">Status</div>
+                    <div className="font-bold">{selectedVenda.status}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">Cliente</div>
+                    <div className="font-bold">
+                      {selectedVenda.cliente?.nome || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Data da Venda
+                    </div>
+                    <div>{formatDate(selectedVenda.data_venda)}</div>
+                  </div>
                 </div>
-                <div className="font-medium">
-                  {selectedVenda.data_entrega
-                    ? formatDateOnly(selectedVenda.data_entrega)
-                    : "Sem data"}
-                </div>
-                <div className="text-slate-600 text-xs mt-1">
-                  {selectedVenda.endereco_rua
-                    ? `${selectedVenda.endereco_rua}, ${selectedVenda.endereco_numero || ""}`
-                    : "Endereço não informado"}
-                </div>
-                <div className="text-slate-500 text-xs">
-                  {selectedVenda.endereco_bairro || "-"} •{" "}
-                  {selectedVenda.endereco_cidade || "-"} /{" "}
-                  {selectedVenda.endereco_estado || "-"} •{" "}
-                  {selectedVenda.endereco_cep || "-"}
-                </div>
-              </div>
-            )}
 
-            {selectedVenda.status === "ENVIADO" && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
-                Produto em entrega.
-              </div>
-            )}
+                {(selectedVenda.status === "PEDIDO" ||
+                  selectedVenda.status === "ENTREGA") && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm">
+                    <div className="text-xs text-slate-400 uppercase mb-1">
+                      Entrega
+                    </div>
+                    <div className="font-medium">
+                      {selectedVenda.data_entrega
+                        ? formatDateOnly(selectedVenda.data_entrega)
+                        : "Sem data"}
+                    </div>
+                    <div className="text-slate-600 text-xs mt-1">
+                      {selectedVenda.endereco_rua
+                        ? `${selectedVenda.endereco_rua}, ${selectedVenda.endereco_numero || ""}`
+                        : "Endereço não informado"}
+                    </div>
+                    <div className="text-slate-500 text-xs">
+                      {selectedVenda.endereco_bairro || "-"} •{" "}
+                      {selectedVenda.endereco_cidade || "-"} /{" "}
+                      {selectedVenda.endereco_estado || "-"} •{" "}
+                      {selectedVenda.endereco_cep || "-"}
+                    </div>
+                  </div>
+                )}
 
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="p-3">Produto</th>
-                    <th className="p-3">Qtd</th>
-                    <th className="p-3">Unitário</th>
-                    <th className="p-3">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedVenda.itens?.map((it: any) => (
-                    <tr key={it.id}>
-                      <td className="p-3">
-                        {it.produto?.nome || it.produtoNome || "—"}
-                      </td>
-                      <td className="p-3">{it.qtd}</td>
-                      <td className="p-3">
-                        {Number(it.preco_un_aplicado || 0).toLocaleString(
+                {selectedVenda.status === "ENVIADO" && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                    Produto em entrega.
+                  </div>
+                )}
+
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-xs uppercase text-slate-500">
+                      <tr>
+                        <th className="p-3">Produto</th>
+                        <th className="p-3">Qtd</th>
+                        <th className="p-3">Unitário</th>
+                        <th className="p-3">Subtotal</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {selectedVenda.itens?.map((it: any) => (
+                        <tr key={it.id}>
+                          <td className="p-3">
+                            {it.produto?.nome || it.produtoNome || "—"}
+                          </td>
+                          <td className="p-3">{it.qtd}</td>
+                          <td className="p-3">
+                            {Number(it.preco_un_aplicado || 0).toLocaleString(
+                              "pt-BR",
+                              { style: "currency", currency: "BRL" },
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {(
+                              Number(it.preco_un_aplicado || 0) *
+                              Number(it.qtd || 0)
+                            ).toLocaleString("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                      {(!selectedVenda.itens ||
+                        selectedVenda.itens.length === 0) && (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="p-4 text-center text-slate-400"
+                          >
+                            Nenhum item.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end text-sm">
+                  <div className="text-right">
+                    <div className="text-slate-500">
+                      Frete:{" "}
+                      <span className="font-bold">
+                        {Number(selectedVenda.frete || 0).toLocaleString(
                           "pt-BR",
-                          { style: "currency", currency: "BRL" },
+                          {
+                            style: "currency",
+                            currency: "BRL",
+                          },
                         )}
-                      </td>
-                      <td className="p-3">
-                        {(Number(it.preco_un_aplicado || 0) *
-                          Number(it.qtd || 0)).toLocaleString("pt-BR", {
+                      </span>
+                    </div>
+                    <div className="text-slate-700 text-lg font-bold">
+                      Total:{" "}
+                      {Number(selectedVenda.total || 0).toLocaleString(
+                        "pt-BR",
+                        {
                           style: "currency",
                           currency: "BRL",
-                        })}
-                      </td>
-                    </tr>
-                  ))}
-                  {(!selectedVenda.itens ||
-                    selectedVenda.itens.length === 0) && (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="p-4 text-center text-slate-400"
-                      >
-                        Nenhum item.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-end text-sm">
-              <div className="text-right">
-                <div className="text-slate-500">
-                  Frete:{" "}
-                  <span className="font-bold">
-                    {Number(selectedVenda.frete || 0).toLocaleString("pt-BR", {
-                      style: "currency",
-                      currency: "BRL",
-                    })}
-                  </span>
-                </div>
-                <div className="text-slate-700 text-lg font-bold">
-                  Total:{" "}
-                  {Number(selectedVenda.total || 0).toLocaleString("pt-BR", {
-                    style: "currency",
-                    currency: "BRL",
-                  })}
+                        },
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {detailsTab === "notaFiscal" && (
+              <div className="space-y-4 animate-fadeIn">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">Modelo</div>
+                    <div className="font-bold">
+                      {selectedVenda.notaFiscalModelo || "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Sequencial
+                    </div>
+                    <div className="font-bold">
+                      {selectedVenda.notaFiscalSequencial || "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Número / Série
+                    </div>
+                    <div className="font-bold">
+                      {selectedVenda.notaFiscalNumero || "-"} /{" "}
+                      {selectedVenda.notaFiscalSerie || "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Status Receita
+                    </div>
+                    <div className="font-bold">
+                      [{selectedVenda.notaFiscalStatusCode || "SEM_COD"}]{" "}
+                      {selectedVenda.notaFiscalStatusMessage || "Sem detalhe"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm space-y-2">
+                  <div>
+                    <span className="text-xs text-slate-400 uppercase block">
+                      Chave de Acesso
+                    </span>
+                    <span className="font-mono break-all">
+                      {selectedVenda.notaFiscalChaveAcesso || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-400 uppercase block">
+                      Protocolo
+                    </span>
+                    <span className="font-mono">
+                      {selectedVenda.notaFiscalProtocolo || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-slate-400 uppercase block">
+                      Autorização
+                    </span>
+                    <span>
+                      {selectedVenda.notaFiscalDataAutorizacao
+                        ? formatDate(selectedVenda.notaFiscalDataAutorizacao)
+                        : "-"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handlePrintVendaDiretaDanfe(selectedVenda)}
+                    disabled={
+                      String(selectedVenda.notaFiscalModelo || "") !== "55"
+                    }
+                    className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-bold"
+                  >
+                    Imprimir DANFE
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
     </div>
   );
 }
-
