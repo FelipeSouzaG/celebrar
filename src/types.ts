@@ -171,6 +171,7 @@ export interface Compra {
   parcelas?: number;
   formaPagamento?: "DINHEIRO_CAIXA" | "BOLETO"; // Para status PENDENTE
   numeroParcelas?: number; // Para boleto: 1-5
+  xmlNotaEntrada?: string | null;
 }
 
 export interface ItemCompra {
