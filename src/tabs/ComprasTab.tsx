@@ -35,6 +35,7 @@ interface CompraForm {
   // Novos campos para pagamento PENDENTE
   formaPagamento?: "DINHEIRO_CAIXA" | "BOLETO";
   numeroParcelas?: number;
+  xmlNotaEntrada: string;
 }
 
 const initialForm: CompraForm = {
@@ -52,6 +53,7 @@ const initialForm: CompraForm = {
   parcelas: 1,
   formaPagamento: "DINHEIRO_CAIXA",
   numeroParcelas: 1,
+  xmlNotaEntrada: "",
 };
 
 export function ComprasTab() {
@@ -69,6 +71,7 @@ export function ComprasTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CompraForm>(initialForm);
+  const [xmlFileName, setXmlFileName] = useState("");
 
   // Temp Item state includes Lot info now
   const [tempItem, setTempItem] = useState<{
@@ -254,6 +257,22 @@ export function ComprasTab() {
     setProductSearch("");
   };
 
+  const handleXmlUpload = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const content = await file.text();
+      if (!content.trim()) {
+        alert("Arquivo XML vazio.");
+        return;
+      }
+      setForm((prev) => ({ ...prev, xmlNotaEntrada: content }));
+      setXmlFileName(file.name);
+    } catch (e) {
+      console.error(e);
+      alert("Não foi possível ler o arquivo XML.");
+    }
+  };
+
   const removeItem = (idx: number) => {
     setForm((prev) => ({
       ...prev,
@@ -294,12 +313,15 @@ export function ComprasTab() {
             : 1,
         formaPagamento: compra.formaPagamento || "DINHEIRO_CAIXA",
         numeroParcelas: compra.numeroParcelas || 1,
+        xmlNotaEntrada: compra.xmlNotaEntrada || "",
       });
       setSupplierSearch(compra.fornecedor?.nome || "");
+      setXmlFileName(compra.xmlNotaEntrada ? "XML já carregado" : "");
     } else {
       setEditingId(null);
       setForm(initialForm);
       setSupplierSearch("");
+      setXmlFileName("");
     }
     setModalOpen(true);
     // Reset product search states
@@ -347,6 +369,7 @@ export function ComprasTab() {
       }
       setModalOpen(false);
       setForm(initialForm);
+      setXmlFileName("");
       loadData();
     } catch (e: any) {
       alert(e.message);
@@ -625,6 +648,45 @@ export function ComprasTab() {
                   setForm({ ...form, data_compra: e.target.value })
                 }
               />
+            </div>
+            <div className="md:col-span-8">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                XML da Nota de Entrada (Opcional)
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer">
+                  Carregar XML
+                  <input
+                    type="file"
+                    accept=".xml,text/xml,application/xml"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      await handleXmlUpload(file);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <span className="text-xs text-slate-500">
+                  {xmlFileName
+                    ? `Arquivo: ${xmlFileName}`
+                    : form.xmlNotaEntrada
+                      ? "XML carregado no formulário"
+                      : "Nenhum XML carregado"}
+                </span>
+                {form.xmlNotaEntrada && (
+                  <button
+                    type="button"
+                    className="text-xs font-bold text-rose-600 hover:text-rose-700"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, xmlNotaEntrada: "" }));
+                      setXmlFileName("");
+                    }}
+                  >
+                    Remover XML
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1075,4 +1137,3 @@ export function ComprasTab() {
     </div>
   );
 }
-
