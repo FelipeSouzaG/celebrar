@@ -14,6 +14,7 @@ import {
   TransacaoFinanceira,
   UsuarioAdmin,
   VendaAdmin,
+  VendaFiscalXmlResponse,
   VendaDiretaMutationResponse,
 } from "./types";
 
@@ -370,6 +371,10 @@ class AdminApi {
         body: JSON.stringify(data),
       },
     );
+  }
+
+  getVendaFiscalXml(id: string) {
+    return this.request<VendaFiscalXmlResponse>(`/vendas/${id}/xml`);
   }
 
   // ADMIN DELETIONS
