@@ -258,11 +258,38 @@ export interface VendaAdmin {
   total: number;
   tipo_pagamento: string;
   itens: ItemVenda[];
+  notaFiscalModelo?: string | null;
+  notaFiscalSequencial?: number | null;
+  notaFiscalSerie?: number | null;
+  notaFiscalNumero?: number | null;
+  notaFiscalChaveAcesso?: string | null;
+  notaFiscalProtocolo?: string | null;
+  notaFiscalDataAutorizacao?: string | null;
+  notaFiscalStatusCode?: string | null;
+  notaFiscalStatusMessage?: string | null;
+  notaFiscalXml?: string | null;
   contaBancaria?: {
     id: string;
     nome: string;
     tipo: string;
   } | null;
+}
+
+export interface VendaFiscalXmlResponse {
+  success: boolean;
+  origem: "TC" | "VD";
+  vendaId: string;
+  codigo?: string | null;
+  modelo?: string | null;
+  sequencial?: number | null;
+  serie?: number | null;
+  numero?: number | null;
+  chaveAcesso?: string | null;
+  protocolo?: string | null;
+  dataAutorizacao?: string | null;
+  statusCode?: string | null;
+  statusMessage?: string | null;
+  xml: string;
 }
 
 export interface NfeResult {
@@ -367,4 +394,3 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
-
