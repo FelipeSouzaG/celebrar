@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoUrl from "../img/logo.png";
+import logoUrl from "../img/logo.svg";
 import { Lote, Produto, ProdutoDetalhesResponse, Role } from "../types";
 import { formatDate, formatMoney } from "../utils";
 
@@ -11,6 +11,14 @@ const emptyProdutoForm: Partial<Produto> = {
   nome: "",
   localizacao: "",
   categoria: "",
+  ncm: "00000000",
+  cest: "",
+  tipo_tributacao: "NORMAL",
+  csosn: "101",
+  cfop_padrao: "5102",
+  cst_pis: "49",
+  cst_cofins: "49",
+  origem: "0",
   codigoCatalogo: "",
   embalagemTipo: "",
   embalagemUnidade: "",
@@ -372,21 +380,61 @@ export function ProdutosTab() {
     }
   };
 
+  const applyTributacaoRules = (
+    next: Partial<Produto>,
+    source: "cest" | "tipo" | "manual" = "manual",
+  ) => {
+    const hasCest = Boolean(String(next.cest || "").trim());
+    const tipo = hasCest ? "ST" : "NORMAL";
+    const updated: Partial<Produto> = {
+      ...next,
+      tipo_tributacao: source === "tipo" ? next.tipo_tributacao || tipo : tipo,
+      ncm: String(next.ncm || "00000000").replace(/\D/g, "").slice(0, 8),
+      cest: String(next.cest || "").replace(/\D/g, "").slice(0, 7),
+      origem: String(next.origem || "0").replace(/\D/g, "").slice(0, 1) || "0",
+      cst_pis: String(next.cst_pis || "49").replace(/\D/g, "").slice(0, 2) || "49",
+      cst_cofins:
+        String(next.cst_cofins || "49").replace(/\D/g, "").slice(0, 2) || "49",
+    };
+
+    if ((updated.tipo_tributacao || "NORMAL") === "NORMAL") {
+      updated.csosn = "101";
+      updated.cfop_padrao = "5102";
+    } else {
+      updated.csosn =
+        String(next.csosn || "").replace(/\D/g, "").slice(0, 3) || "500";
+      updated.cfop_padrao =
+        String(next.cfop_padrao || "").replace(/\D/g, "").slice(0, 4) || "5405";
+    }
+
+    return updated;
+  };
+
   const openModal = (p?: Produto) => {
     setEditingId(p ? p.id : null);
     setForm(
-      p
-        ? {
-            ...p,
-            categoria: p.categoria || "",
-            codigoCatalogo: p.codigoCatalogo || "",
-            embalagemTipo: p.embalagemTipo || "",
-            embalagemUnidade: p.embalagemUnidade || "",
-            embalagemQuantidade: p.embalagemQuantidade || 0,
-            precoEmbalagem: p.precoEmbalagem || 0,
-            precoUnidade: p.precoUnidade || 0,
-          }
-        : emptyProdutoForm,
+      applyTributacaoRules(
+        p
+          ? {
+              ...p,
+              categoria: p.categoria || "",
+              codigoCatalogo: p.codigoCatalogo || "",
+              embalagemTipo: p.embalagemTipo || "",
+              embalagemUnidade: p.embalagemUnidade || "",
+              embalagemQuantidade: p.embalagemQuantidade || 0,
+              precoEmbalagem: p.precoEmbalagem || 0,
+              precoUnidade: p.precoUnidade || 0,
+              ncm: p.ncm || "00000000",
+              cest: p.cest || "",
+              tipo_tributacao: p.tipo_tributacao || "NORMAL",
+              csosn: p.csosn || "101",
+              cfop_padrao: p.cfop_padrao || "5102",
+              cst_pis: p.cst_pis || "49",
+              cst_cofins: p.cst_cofins || "49",
+              origem: p.origem || "0",
+            }
+          : emptyProdutoForm,
+      ),
     );
     setModalOpen(true);
   };
@@ -1439,6 +1487,162 @@ export function ProdutosTab() {
                 </div>
               </div>
             </div>
+            <div className="border-t border-slate-200 pt-4">
+              <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-500"></span>{" "}
+                Regras de Tributação
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    NCM
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg font-mono"
+                    maxLength={8}
+                    value={form.ncm || ""}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, ncm: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    CEST (Opcional)
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg font-mono"
+                    maxLength={7}
+                    value={form.cest || ""}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, cest: e.target.value },
+                          "cest",
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Tipo Tributação
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg bg-slate-100 text-slate-700 font-bold"
+                    value={form.tipo_tributacao || "NORMAL"}
+                    readOnly
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Origem
+                  </label>
+                  <select
+                    className="w-full p-2.5 border rounded-lg bg-white"
+                    value={form.origem || "0"}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, origem: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                  >
+                    <option value="0">0 - Nacional</option>
+                    <option value="1">1 - Estrangeira (importação direta)</option>
+                    <option value="2">2 - Estrangeira (mercado interno)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    CSOSN
+                  </label>
+                  <input
+                    className={`w-full p-2.5 border rounded-lg font-mono ${form.tipo_tributacao === "NORMAL" ? "bg-slate-100 text-slate-600" : ""}`}
+                    maxLength={3}
+                    value={form.csosn || ""}
+                    readOnly={form.tipo_tributacao === "NORMAL"}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, csosn: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    CFOP Padrão
+                  </label>
+                  <input
+                    className={`w-full p-2.5 border rounded-lg font-mono ${form.tipo_tributacao === "NORMAL" ? "bg-slate-100 text-slate-600" : ""}`}
+                    maxLength={4}
+                    value={form.cfop_padrao || ""}
+                    readOnly={form.tipo_tributacao === "NORMAL"}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, cfop_padrao: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    CST PIS
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg font-mono"
+                    maxLength={2}
+                    value={form.cst_pis || ""}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, cst_pis: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    CST COFINS
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg font-mono"
+                    maxLength={2}
+                    value={form.cst_cofins || ""}
+                    onChange={(e) =>
+                      setForm((prev) =>
+                        applyTributacaoRules(
+                          { ...prev, cst_cofins: e.target.value },
+                          "manual",
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-3">
+                Regra automática: com CEST informado, o tipo tributação vira ST.
+                Sem CEST, volta para NORMAL com CSOSN 101 e CFOP 5102.
+              </p>
+            </div>
             <div className="pt-4 flex justify-end gap-3">
               <button
                 type="button"
@@ -1785,4 +1989,3 @@ export function ProdutosTab() {
     </div>
   );
 }
-
