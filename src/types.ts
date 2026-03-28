@@ -15,6 +15,14 @@ export interface Produto {
   nome: string;
   localizacao?: string;
   categoria?: string | null;
+  ncm?: string | null;
+  cest?: string | null;
+  tipo_tributacao?: "NORMAL" | "ST" | string;
+  csosn?: string | null;
+  cfop_padrao?: string | null;
+  cst_pis?: string | null;
+  cst_cofins?: string | null;
+  origem?: string | null;
   codigoCatalogo?: string | null;
   embalagemTipo?: string | null;
   embalagemUnidade?: string | null;
