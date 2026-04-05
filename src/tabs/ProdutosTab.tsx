@@ -37,7 +37,7 @@ const normalizeBarcodeValue = (value: string) =>
   String(value || "")
     .replace(/[\r\n\t]+/g, "")
     .trim()
-    .replace(/^#b/i, "")
+    .replace(/^#?b(?=\d)/i, "")
     .replace(/#+$/g, "")
     .trim();
 
