@@ -33,6 +33,14 @@ const emptyProdutoForm: Partial<Produto> = {
   estoque: 0,
 };
 
+const normalizeBarcodeValue = (value: string) =>
+  String(value || "")
+    .replace(/[\r\n\t]+/g, "")
+    .trim()
+    .replace(/^#b/i, "")
+    .replace(/#+$/g, "")
+    .trim();
+
 // Componente Badge de Markup
 const MarkupBadge = ({ custo, preco }: { custo: number; preco: number }) => {
   if (custo <= 0)
@@ -371,8 +379,12 @@ export function ProdutosTab() {
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      if (editingId) await adminApi.updateProduto(editingId, form);
-      else await adminApi.createProduto(form);
+      const payload = {
+        ...form,
+        codigo_barras: normalizeBarcodeValue(form.codigo_barras || ""),
+      };
+      if (editingId) await adminApi.updateProduto(editingId, payload);
+      else await adminApi.createProduto(payload);
       setModalOpen(false);
       loadData();
     } catch (e: any) {
@@ -417,6 +429,7 @@ export function ProdutosTab() {
         p
           ? {
               ...p,
+              codigo_barras: normalizeBarcodeValue(p.codigo_barras || ""),
               categoria: p.categoria || "",
               codigoCatalogo: p.codigoCatalogo || "",
               embalagemTipo: p.embalagemTipo || "",
@@ -1206,7 +1219,10 @@ export function ProdutosTab() {
                   placeholder="Ex: 789..."
                   value={form.codigo_barras || ""}
                   onChange={(e) =>
-                    setForm({ ...form, codigo_barras: e.target.value })
+                    setForm({
+                      ...form,
+                      codigo_barras: normalizeBarcodeValue(e.target.value),
+                    })
                   }
                 />
               </div>
