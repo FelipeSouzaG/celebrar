@@ -41,6 +41,15 @@ const normalizeBarcodeValue = (value: string) =>
     .replace(/#+$/g, "")
     .trim();
 
+const normalizeSearchInputValue = (value: string) => {
+  const raw = String(value || "").replace(/[\u0000-\u001F\u007F]+/g, "");
+  const trimmed = raw.trim();
+  if (/^#?b\d+#+$/i.test(trimmed)) {
+    return normalizeBarcodeValue(trimmed);
+  }
+  return raw;
+};
+
 // Componente Badge de Markup
 const MarkupBadge = ({ custo, preco }: { custo: number; preco: number }) => {
   if (custo <= 0)
@@ -131,11 +140,15 @@ export function ProdutosTab() {
       const search = searchText.toLowerCase();
       const barcodeSearch = normalizeBarcodeValue(searchText).toLowerCase();
       const codigoBarras = (p.codigo_barras || "").toLowerCase();
+      const codigoBarrasDigits = codigoBarras.replace(/\D/g, "");
+      const barcodeSearchDigits = barcodeSearch.replace(/\D/g, "");
       const codigoFornecedor = (p.codigoCatalogo || "").toLowerCase();
       const matchesText =
         p.nome.toLowerCase().includes(search) ||
         codigoBarras.includes(search) ||
         (barcodeSearch && codigoBarras.includes(barcodeSearch)) ||
+        (barcodeSearchDigits &&
+          codigoBarrasDigits.includes(barcodeSearchDigits)) ||
         codigoFornecedor.includes(search) ||
         (p.categoria || "").toLowerCase().includes(search) ||
         (p.localizacao || "").toLowerCase().includes(search);
@@ -668,7 +681,7 @@ export function ProdutosTab() {
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               placeholder="Filtrar por descricao, cod. barras, cod. fornecedor, categoria ou local..."
               value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
+              onChange={(e) => setSearchText(normalizeSearchInputValue(e.target.value))}
             />
           </div>
           {/* ... Other filters ... */}
