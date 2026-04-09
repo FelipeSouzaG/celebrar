@@ -129,9 +129,14 @@ export function ProdutosTab() {
     return produtos.filter((p) => {
       // 1. Text Search
       const search = searchText.toLowerCase();
+      const barcodeSearch = normalizeBarcodeValue(searchText).toLowerCase();
+      const codigoBarras = (p.codigo_barras || "").toLowerCase();
+      const codigoFornecedor = (p.codigoCatalogo || "").toLowerCase();
       const matchesText =
         p.nome.toLowerCase().includes(search) ||
-        p.codigo_barras.includes(search) ||
+        codigoBarras.includes(search) ||
+        (barcodeSearch && codigoBarras.includes(barcodeSearch)) ||
+        codigoFornecedor.includes(search) ||
         (p.categoria || "").toLowerCase().includes(search) ||
         (p.localizacao || "").toLowerCase().includes(search);
 
@@ -661,7 +666,7 @@ export function ProdutosTab() {
             </div>
             <input
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-              placeholder="Filtrar por nome, código, categoria ou local..."
+              placeholder="Filtrar por descricao, cod. barras, cod. fornecedor, categoria ou local..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
             />
