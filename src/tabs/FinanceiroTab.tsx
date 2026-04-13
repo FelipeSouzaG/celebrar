@@ -3,10 +3,12 @@ import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal, Table } from "../components/Shared";
 import {
+  ContabilidadeTipo,
   ContaBancaria,
   DespesaPayload,
   ExtratoConta,
   ExtratoItem,
+  NotaContabilidadeItem,
   TransacaoFinanceira,
 } from "../types";
 import { formatDateOnly, formatMoney, toInputDate, todayInputDate } from "../utils";
@@ -68,6 +70,25 @@ export function FinanceiroTab() {
     diaVencimento: "",
   });
   const [showNewContaForm, setShowNewContaForm] = useState(false);
+
+  const [contabilidadeModalOpen, setContabilidadeModalOpen] = useState(false);
+  const [contabilidadeFiltros, setContabilidadeFiltros] = useState<{
+    tipo: ContabilidadeTipo;
+    dataIni: string;
+    dataFim: string;
+  }>({
+    tipo: "ENTRADA",
+    dataIni: `${todayInputDate().slice(0, 7)}-01`,
+    dataFim: todayInputDate(),
+  });
+  const [contabilidadeNotas, setContabilidadeNotas] = useState<
+    NotaContabilidadeItem[]
+  >([]);
+  const [loadingContabilidadeNotas, setLoadingContabilidadeNotas] =
+    useState(false);
+  const [exportingContabilidadeZip, setExportingContabilidadeZip] =
+    useState(false);
+  const [contabilidadeError, setContabilidadeError] = useState("");
 
   const [extratoModalOpen, setExtratoModalOpen] = useState(false);
   const [selectedConta, setSelectedConta] = useState<ContaBancaria | null>(
@@ -421,6 +442,85 @@ export function FinanceiroTab() {
       .catch((e: any) => alert(e.message));
   };
 
+  const openContabilidadeModal = () => {
+    const [anoStr, mesStr] = String(competencia || "").split("-");
+    const ano = Number(anoStr);
+    const mes = Number(mesStr);
+    const hasValidCompetencia = Number.isFinite(ano) && Number.isFinite(mes);
+    const lastDay = hasValidCompetencia
+      ? new Date(ano, mes, 0).getDate()
+      : new Date().getDate();
+
+    const dataIni = hasValidCompetencia
+      ? `${String(ano).padStart(4, "0")}-${String(mes).padStart(2, "0")}-01`
+      : `${todayInputDate().slice(0, 7)}-01`;
+    const dataFim = hasValidCompetencia
+      ? `${String(ano).padStart(4, "0")}-${String(mes).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+      : todayInputDate();
+
+    setContabilidadeFiltros({
+      tipo: "ENTRADA",
+      dataIni,
+      dataFim,
+    });
+    setContabilidadeNotas([]);
+    setContabilidadeError("");
+    setContabilidadeModalOpen(true);
+  };
+
+  const handleBuscarNotasContabilidade = async () => {
+    if (!contabilidadeFiltros.dataIni || !contabilidadeFiltros.dataFim) {
+      setContabilidadeError("Informe a data inicial e final.");
+      return;
+    }
+    if (contabilidadeFiltros.dataIni > contabilidadeFiltros.dataFim) {
+      setContabilidadeError("A data inicial não pode ser maior que a data final.");
+      return;
+    }
+
+    try {
+      setLoadingContabilidadeNotas(true);
+      setContabilidadeError("");
+      const result = await adminApi.getNotasContabilidade(contabilidadeFiltros);
+      setContabilidadeNotas(result.items || []);
+    } catch (e: any) {
+      setContabilidadeNotas([]);
+      setContabilidadeError(e.message || "Falha ao buscar notas.");
+    } finally {
+      setLoadingContabilidadeNotas(false);
+    }
+  };
+
+  const handleExportarNotasContabilidade = async () => {
+    if (contabilidadeNotas.length === 0) {
+      alert("Busque as notas do período antes de exportar o ZIP.");
+      return;
+    }
+
+    try {
+      setExportingContabilidadeZip(true);
+      const { blob, filename } = await adminApi.exportarNotasContabilidadeZip(
+        contabilidadeFiltros,
+      );
+      const downloadName =
+        filename ||
+        `xml-contabilidade-${contabilidadeFiltros.tipo.toLowerCase()}-${contabilidadeFiltros.dataIni}_a_${contabilidadeFiltros.dataFim}.zip`;
+
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = downloadName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message || "Falha ao exportar ZIP dos XMLs.");
+    } finally {
+      setExportingContabilidadeZip(false);
+    }
+  };
+
   const selectedContaObj = contas.find(
     (c) => c.id === formDespesa.contaBancariaId,
   );
@@ -452,6 +552,12 @@ export function FinanceiroTab() {
             className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-lg font-bold flex gap-2 text-sm shadow-lg shadow-slate-900/10 transition-all active:scale-95"
           >
             <Icons.Cash /> Contas
+          </button>
+          <button
+            onClick={openContabilidadeModal}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-bold flex gap-2 text-sm shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+          >
+            <Icons.Receipt /> Contabilidade
           </button>
           <button
             onClick={() => handleOpenDespesaModal()}
@@ -726,6 +832,149 @@ export function FinanceiroTab() {
           })}
         </Table>
       </div>
+
+      <Modal
+        open={contabilidadeModalOpen}
+        title="Exportar XML para Contabilidade"
+        onClose={() => setContabilidadeModalOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Tipo
+              </label>
+              <select
+                className="w-full p-2.5 border rounded-lg bg-white"
+                value={contabilidadeFiltros.tipo}
+                onChange={(e) =>
+                  setContabilidadeFiltros((prev) => ({
+                    ...prev,
+                    tipo: e.target.value as ContabilidadeTipo,
+                  }))
+                }
+              >
+                <option value="ENTRADA">Entradas (Compras)</option>
+                <option value="SAIDA">Saídas (Vendas)</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Data Inicial
+              </label>
+              <input
+                type="date"
+                className="w-full p-2.5 border rounded-lg"
+                value={contabilidadeFiltros.dataIni}
+                onChange={(e) =>
+                  setContabilidadeFiltros((prev) => ({
+                    ...prev,
+                    dataIni: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Data Final
+              </label>
+              <input
+                type="date"
+                className="w-full p-2.5 border rounded-lg"
+                value={contabilidadeFiltros.dataFim}
+                onChange={(e) =>
+                  setContabilidadeFiltros((prev) => ({
+                    ...prev,
+                    dataFim: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <div className="text-xs text-slate-600 font-medium">
+              {contabilidadeNotas.length} nota(s) encontrada(s) para exportação
+            </div>
+            <button
+              type="button"
+              onClick={handleBuscarNotasContabilidade}
+              disabled={loadingContabilidadeNotas}
+              className="bg-slate-800 hover:bg-slate-900 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-xs font-bold"
+            >
+              {loadingContabilidadeNotas ? "Buscando..." : "Buscar Notas"}
+            </button>
+          </div>
+
+          {contabilidadeError && (
+            <div className="bg-rose-50 text-rose-700 border border-rose-200 rounded-lg p-3 text-sm">
+              {contabilidadeError}
+            </div>
+          )}
+
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="max-h-72 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] tracking-wide">
+                  <tr>
+                    <th className="p-2 text-left">Data</th>
+                    <th className="p-2 text-left">Documento</th>
+                    <th className="p-2 text-left">Origem</th>
+                    <th className="p-2 text-left">Código</th>
+                    <th className="p-2 text-left">Chave</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contabilidadeNotas.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="p-4 text-center text-slate-400 text-xs"
+                      >
+                        Nenhuma nota listada.
+                      </td>
+                    </tr>
+                  ) : (
+                    contabilidadeNotas.map((nota) => (
+                      <tr
+                        key={`${nota.id}-${nota.origem}`}
+                        className="border-t border-slate-100"
+                      >
+                        <td className="p-2 text-xs text-slate-600 font-mono">
+                          {formatDateOnly(nota.data)}
+                        </td>
+                        <td className="p-2 text-xs font-bold text-slate-700">
+                          {nota.documento}
+                        </td>
+                        <td className="p-2 text-xs text-slate-600">
+                          {nota.origem}
+                        </td>
+                        <td className="p-2 text-xs text-slate-700 font-mono">
+                          {nota.codigo}
+                        </td>
+                        <td className="p-2 text-xs text-slate-500 font-mono">
+                          {nota.chaveAcesso || "-"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleExportarNotasContabilidade}
+            disabled={contabilidadeNotas.length === 0 || exportingContabilidadeZip}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold"
+          >
+            {exportingContabilidadeZip
+              ? "Gerando ZIP..."
+              : "Baixar XMLs (.zip)"}
+          </button>
+        </div>
+      </Modal>
 
       {/* MODAL EDITAR / NOVO (CRUD COMPLETO) */}
       <Modal
