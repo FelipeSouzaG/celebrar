@@ -2,6 +2,7 @@ import {
   Cliente,
   ClienteDetalhesResponse,
   Compra,
+  ContabilidadeTipo,
   ContaBancaria,
   DespesaPayload,
   ExtratoConta,
@@ -10,6 +11,7 @@ import {
   LoginResponse,
   Produto,
   ProdutoDetalhesResponse,
+  NotasContabilidadeResponse,
   SessaoCaixaAdmin,
   TransacaoFinanceira,
   UsuarioAdmin,
@@ -67,6 +69,47 @@ class AdminApi {
     }
 
     return payload as T;
+  }
+
+  private extractFilenameFromDisposition(value: string | null) {
+    if (!value) return null;
+    const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1].replace(/["']/g, "").trim());
+      } catch {
+        return utf8Match[1].replace(/["']/g, "").trim();
+      }
+    }
+    const simpleMatch = value.match(/filename="?([^";]+)"?/i);
+    return simpleMatch?.[1] ? simpleMatch[1].trim() : null;
+  }
+
+  private async requestBlob(endpoint: string, options: RequestInit = {}) {
+    const hasBody = options.body !== undefined && options.body !== null;
+    const headers = {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...(this.getCsrfToken()
+        ? { "X-CSRF-Token": this.getCsrfToken() }
+        : {}),
+    };
+
+    const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+    const response = await fetch(`${API_URL}${cleanEndpoint}`, {
+      ...options,
+      credentials: "include",
+      headers: { ...headers, ...options.headers },
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || `Erro ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get("content-disposition");
+    const filename = this.extractFilenameFromDisposition(contentDisposition);
+    return { blob, filename };
   }
 
   async login(login: string, senha: string) {
@@ -278,6 +321,30 @@ class AdminApi {
   // --- Financeiro ---
   getExtratoFinanceiro() {
     return this.request<TransacaoFinanceira[]>("/admin/financeiro");
+  }
+  getNotasContabilidade(filters: {
+    tipo: ContabilidadeTipo;
+    dataIni: string;
+    dataFim: string;
+  }) {
+    const query = new URLSearchParams({
+      tipo: filters.tipo,
+      dataIni: filters.dataIni,
+      dataFim: filters.dataFim,
+    });
+    return this.request<NotasContabilidadeResponse>(
+      `/admin/contabilidade/notas?${query.toString()}`,
+    );
+  }
+  exportarNotasContabilidadeZip(filters: {
+    tipo: ContabilidadeTipo;
+    dataIni: string;
+    dataFim: string;
+  }) {
+    return this.requestBlob("/admin/contabilidade/notas/export", {
+      method: "POST",
+      body: JSON.stringify(filters),
+    });
   }
   createDespesa(data: DespesaPayload) {
     return this.request("/admin/despesas", {
