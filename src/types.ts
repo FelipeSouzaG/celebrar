@@ -247,6 +247,27 @@ export interface ExtratoConta {
   itens: ExtratoItem[];
 }
 
+export type ContabilidadeTipo = "ENTRADA" | "SAIDA";
+
+export interface NotaContabilidadeItem {
+  id: string;
+  origem: "COMPRAS" | "PDV" | "VENDA_DIRETA";
+  documento: "XML Compra" | "NFC-e" | "NF-e";
+  modelo: string;
+  codigo: string;
+  data: string;
+  chaveAcesso?: string | null;
+  nome?: string | null;
+}
+
+export interface NotasContabilidadeResponse {
+  tipo: ContabilidadeTipo;
+  dataIni: string;
+  dataFim: string;
+  total: number;
+  items: NotaContabilidadeItem[];
+}
+
 // --- TIPOS DE VENDA E SESSÃO ---
 
 export interface ItemVenda {
@@ -403,3 +424,4 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
+
