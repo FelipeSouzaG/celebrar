@@ -338,7 +338,7 @@ export function ProdutosTab() {
               object-fit: contain;
             }
             .label-desc {
-              font-size: 22px;
+              font-size: 20px;
               font-weight: 700;
               color: #1f1f1f;
               line-height: 1.15;
