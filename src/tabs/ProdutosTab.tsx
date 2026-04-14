@@ -263,11 +263,9 @@ export function ProdutosTab() {
     const clean = code.replace(/\s+/g, "");
     const loc = (location || "").trim();
     return `
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
-        <div style="font-size:15px;font-weight:800; padding-right: 8px;">${escapeHtml(clean)}</div>
-        <div style="font-size:15px;color:#333;font-weight:600; padding-right: 8px;">${escapeHtml(
-          loc || "-",
-        )}</div>
+      <div class="label-top">
+        <div class="label-code">${escapeHtml(clean || "-")}</div>
+        <div class="label-location">${escapeHtml(loc || "-")}</div>
       </div>
     `;
   };
@@ -300,62 +298,91 @@ export function ProdutosTab() {
               border: 1px solid black;
               box-sizing: border-box;
               display: grid;
-              grid-template-rows: 1.6cm 0.6cm 1fr;
-              row-gap: 0.15cm;
+              grid-template-rows: 0.8cm 1.3cm 1fr;
+              row-gap: 0.1cm;
+              position: relative;
+              overflow: hidden;
             }
             .label-top {
-              display: grid;
-              grid-template-columns: 2.8cm 1fr;
+              display: flex;
               align-items: center;
-              column-gap: 0.2cm;
+              justify-content: space-between;
+              padding: 0.1cm 0.2cm 0 0.2cm;
+              z-index: 2;
             }
-            .logo {
-              width: 2.4cm;
-              height: auto;
-              align-self: center;
-              margin: 16px, 0, 0, 24px;
+            .label-code {
+              font-size: 14px;
+              font-weight: 800;
+              letter-spacing: 0.02em;
+              color: #111;
+            }
+            .label-location {
+              font-size: 13px;
+              font-weight: 700;
+              color: #2a2a2a;
+              text-align: right;
+            }
+            .label-watermark {
+              position: absolute;
+              inset: 0;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              opacity: 0.08;
+              z-index: 1;
+              pointer-events: none;
+            }
+            .label-watermark img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
             }
             .label-desc {
-              font-size: 14px;
-              font-weight: 600;
-              color: #222;
-              line-height: 1.1;
+              font-size: 15px;
+              font-weight: 700;
+              color: #1f1f1f;
+              line-height: 1.15;
               align-content: center;
               text-align: center;
+              padding: 0 0.2cm;
+              z-index: 2;
             }
             .prices {
               display: grid;
               grid-template-columns: 1fr 1fr;
               gap: 0.2cm;
               align-items: start;
+              padding: 0 0.2cm 0.1cm 0.2cm;
+              z-index: 2;
             }
             .price-block {
               padding: 0.05cm 0.1cm;
               text-align: center;
             }
-            .price-title { font-size: 12px; text-transform: uppercase; color: #3d3d3d; }
-            .price-value { font-size: 18px; font-weight: bold; margin-top: 2px; }
-            .price-sub { font-size: 12px; color: #3d3d3d; margin-top: 2px; }
+            .price-title { font-size: 11px; text-transform: uppercase; color: #4a4a4a; letter-spacing: 0.02em; }
+            .price-value { font-size: 22px; font-weight: 800; margin-top: 2px; color: #111; }
+            .price-sub { font-size: 11px; color: #6a6a6a; margin-top: 2px; }
+            .price-block.atacado .price-title { color: #6a6a6a; }
+            .price-block.atacado .price-value { color: #333; font-size: 18px; font-weight: 700; }
           </style>
         </head>
         <body>
           <div class="sheet">
             ${selected
               .map((p) => {
-                const codeLocation = renderCodeLocationHtml(
-                  p.codigo_barras || "",
-                  p.localizacao || "",
-                );
                 const descricao = p.nome || "";
                 const precoVarejo = formatMoney(p.preco_varejo || 0);
                 const precoAtacado = formatMoney(p.preco_atacado || 0);
                 const qtdAtacado = p.qtd_atacado || 0;
                 return `
                   <div class="label">
-                    <div class="label-top">
-                      <img class="logo" src="${logoUrl}" alt="Logo" />
-                      <div>${codeLocation}</div>
+                    <div class="label-watermark">
+                      <img src="${logoUrl}" alt="Logo" />
                     </div>
+                    ${renderCodeLocationHtml(
+                      p.codigo_barras || "",
+                      p.localizacao || "",
+                    )}
                     <div class="label-desc">${escapeHtml(descricao)}</div>
                     <div class="prices">
                       <div class="price-block">
@@ -364,12 +391,12 @@ export function ProdutosTab() {
                           precoVarejo,
                         )}</div>
                       </div>
-                      <div class="price-block">
+                      <div class="price-block atacado">
                         <div class="price-title">Atacado</div>
                         <div class="price-value">${escapeHtml(
                           precoAtacado,
                         )}</div>
-                        <div class="price-sub">Min: ${qtdAtacado} un</div>
+                        <div class="price-sub">Mín: ${qtdAtacado} un</div>
                       </div>
                     </div>
                   </div>
