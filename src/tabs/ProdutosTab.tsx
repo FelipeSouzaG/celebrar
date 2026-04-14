@@ -328,7 +328,7 @@ export function ProdutosTab() {
               display: flex;
               align-items: center;
               justify-content: center;
-              opacity: 0.08;
+              opacity: 0.16;
               z-index: 1;
               pointer-events: none;
             }
@@ -360,7 +360,7 @@ export function ProdutosTab() {
               text-align: center;
             }
             .price-title { font-size: 11px; text-transform: uppercase; color: #4a4a4a; letter-spacing: 0.02em; }
-            .price-value { font-size: 22px; font-weight: 800; margin-top: 2px; color: #111; }
+            .price-value { font-size: 24px; font-weight: 800; margin-top: 2px; color: #111; }
             .price-sub { font-size: 11px; color: #6a6a6a; margin-top: 2px; }
             .price-block.atacado .price-title { color: #6a6a6a; }
             .price-block.atacado .price-value { color: #333; font-size: 18px; font-weight: 700; }
@@ -446,12 +446,24 @@ export function ProdutosTab() {
     const updated: Partial<Produto> = {
       ...next,
       tipo_tributacao: source === "tipo" ? next.tipo_tributacao || tipo : tipo,
-      ncm: String(next.ncm || "00000000").replace(/\D/g, "").slice(0, 8),
-      cest: String(next.cest || "").replace(/\D/g, "").slice(0, 7),
-      origem: String(next.origem || "0").replace(/\D/g, "").slice(0, 1) || "0",
-      cst_pis: String(next.cst_pis || "49").replace(/\D/g, "").slice(0, 2) || "49",
+      ncm: String(next.ncm || "00000000")
+        .replace(/\D/g, "")
+        .slice(0, 8),
+      cest: String(next.cest || "")
+        .replace(/\D/g, "")
+        .slice(0, 7),
+      origem:
+        String(next.origem || "0")
+          .replace(/\D/g, "")
+          .slice(0, 1) || "0",
+      cst_pis:
+        String(next.cst_pis || "49")
+          .replace(/\D/g, "")
+          .slice(0, 2) || "49",
       cst_cofins:
-        String(next.cst_cofins || "49").replace(/\D/g, "").slice(0, 2) || "49",
+        String(next.cst_cofins || "49")
+          .replace(/\D/g, "")
+          .slice(0, 2) || "49",
     };
 
     if ((updated.tipo_tributacao || "NORMAL") === "NORMAL") {
@@ -459,9 +471,13 @@ export function ProdutosTab() {
       updated.cfop_padrao = "5102";
     } else {
       updated.csosn =
-        String(next.csosn || "").replace(/\D/g, "").slice(0, 3) || "500";
+        String(next.csosn || "")
+          .replace(/\D/g, "")
+          .slice(0, 3) || "500";
       updated.cfop_padrao =
-        String(next.cfop_padrao || "").replace(/\D/g, "").slice(0, 4) || "5405";
+        String(next.cfop_padrao || "")
+          .replace(/\D/g, "")
+          .slice(0, 4) || "5405";
     }
 
     return updated;
@@ -708,7 +724,9 @@ export function ProdutosTab() {
               className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               placeholder="Filtrar por descricao, cod. barras, cod. fornecedor, categoria ou local..."
               value={searchText}
-              onChange={(e) => setSearchText(normalizeSearchInputValue(e.target.value))}
+              onChange={(e) =>
+                setSearchText(normalizeSearchInputValue(e.target.value))
+              }
             />
           </div>
           {/* ... Other filters ... */}
@@ -1618,7 +1636,9 @@ export function ProdutosTab() {
                     }
                   >
                     <option value="0">0 - Nacional</option>
-                    <option value="1">1 - Estrangeira (importação direta)</option>
+                    <option value="1">
+                      1 - Estrangeira (importação direta)
+                    </option>
                     <option value="2">2 - Estrangeira (mercado interno)</option>
                   </select>
                 </div>
