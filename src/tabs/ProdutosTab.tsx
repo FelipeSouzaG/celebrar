@@ -328,7 +328,7 @@ export function ProdutosTab() {
               display: flex;
               align-items: center;
               justify-content: center;
-              opacity: 0.16;
+              opacity: 0.32;
               z-index: 1;
               pointer-events: none;
             }
@@ -360,7 +360,7 @@ export function ProdutosTab() {
               text-align: center;
             }
             .price-title { font-size: 11px; text-transform: uppercase; color: #4a4a4a; letter-spacing: 0.02em; }
-            .price-value { font-size: 24px; font-weight: 800; margin-top: 2px; color: #111; }
+            .price-value { font-size: 32px; font-weight: 800; margin-top: 2px; color: #111; }
             .price-sub { font-size: 11px; color: #6a6a6a; margin-top: 2px; }
             .price-block.atacado .price-title { color: #6a6a6a; }
             .price-block.atacado .price-value { color: #333; font-size: 18px; font-weight: 700; }
