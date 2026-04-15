@@ -31,6 +31,10 @@ const emptyProdutoForm: Partial<Produto> = {
   preco_atacado: 0,
   qtd_atacado: 0,
   estoque: 0,
+  granularAtivo: false,
+  granularTipo: "GRAMA",
+  granularFatorConversao: 0,
+  granularProdutoPaiId: "",
 };
 
 const normalizeBarcodeValue = (value: string) =>
@@ -49,6 +53,46 @@ const normalizeSearchInputValue = (value: string) => {
   }
   return raw;
 };
+
+const normalizeGranularTipo = (value?: string | null) => {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (!raw) return "";
+  if (
+    raw === "GRAMA" ||
+    raw === "GRAMAS" ||
+    raw === "KG" ||
+    raw === "KILO" ||
+    raw === "KILOS" ||
+    raw === "QUILO" ||
+    raw === "QUILOS"
+  ) {
+    return "GRAMA";
+  }
+  if (raw === "UNIDADE" || raw === "UNIDADES" || raw === "UN") {
+    return "UNIDADE";
+  }
+  return raw;
+};
+
+const isGranularProduct = (p?: Partial<Produto> | null) =>
+  Boolean(
+    p?.granularAtivo &&
+      p?.granularProdutoPaiId &&
+      normalizeGranularTipo(p?.granularTipo) &&
+      Number(p?.granularFatorConversao || 0) > 0,
+  );
+
+const formatQty = (value: number, decimals = 3) => {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return "0";
+  const fixed = num.toFixed(decimals);
+  return fixed.replace(/\.?0+$/, "");
+};
+
+const getGranularUnitLabel = (p?: Partial<Produto> | null) =>
+  normalizeGranularTipo(p?.granularTipo) === "GRAMA" ? "g" : "un";
 
 // Componente Badge de Markup
 const MarkupBadge = ({ custo, preco }: { custo: number; preco: number }) => {
@@ -116,6 +160,12 @@ export function ProdutosTab() {
   const [adjustingProduct, setAdjustingProduct] = useState<Produto | null>(
     null,
   );
+  const [replenishModalOpen, setReplenishModalOpen] = useState(false);
+  const [replenishProduct, setReplenishProduct] = useState<Produto | null>(
+    null,
+  );
+  const [replenishQty, setReplenishQty] = useState<number>(0);
+  const [replenishReason, setReplenishReason] = useState("");
 
   const loadData = async () => {
     try {
@@ -223,6 +273,19 @@ export function ProdutosTab() {
       return nome.includes(term) || codigo.includes(term);
     });
   }, [produtos, labelSearch]);
+
+  const granularParentOptions = useMemo(() => {
+    return produtos
+      .filter((p) => p.id !== editingId)
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [produtos, editingId]);
+
+  const selectedGranularParent = useMemo(
+    () =>
+      granularParentOptions.find((p) => p.id === form.granularProdutoPaiId) ||
+      null,
+    [granularParentOptions, form.granularProdutoPaiId],
+  );
 
   const selectedLabelIds = useMemo(
     () => Object.keys(labelSelection).filter((id) => labelSelection[id]),
@@ -338,7 +401,7 @@ export function ProdutosTab() {
               object-fit: contain;
             }
             .label-desc {
-              font-size: 18px;
+              font-size: 20px;
               font-weight: 700;
               color: #1f1f1f;
               line-height: 1.15;
@@ -424,9 +487,40 @@ export function ProdutosTab() {
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     try {
+      const granularEnabled = Boolean(form.granularAtivo);
+      if (granularEnabled) {
+        const fator = Number(form.granularFatorConversao || 0);
+        const principal = String(form.granularProdutoPaiId || "").trim();
+        const tipo = normalizeGranularTipo(form.granularTipo);
+        if (!principal) {
+          alert("Selecione o produto principal para o vínculo granular.");
+          return;
+        }
+        if (!tipo || (tipo !== "GRAMA" && tipo !== "UNIDADE")) {
+          alert("Selecione o tipo granular (grama ou unidade).");
+          return;
+        }
+        if (!Number.isFinite(fator) || fator <= 0) {
+          alert(
+            "Informe a quantidade granular gerada por 1 unidade do produto principal.",
+          );
+          return;
+        }
+      }
+
       const payload = {
         ...form,
         codigo_barras: normalizeBarcodeValue(form.codigo_barras || ""),
+        granularAtivo: granularEnabled,
+        granularTipo: granularEnabled
+          ? normalizeGranularTipo(form.granularTipo) || null
+          : null,
+        granularFatorConversao: granularEnabled
+          ? Number(form.granularFatorConversao || 0)
+          : null,
+        granularProdutoPaiId: granularEnabled
+          ? String(form.granularProdutoPaiId || "").trim() || null
+          : null,
       };
       if (editingId) await adminApi.updateProduto(editingId, payload);
       else await adminApi.createProduto(payload);
@@ -498,6 +592,10 @@ export function ProdutosTab() {
               embalagemQuantidade: p.embalagemQuantidade || 0,
               precoEmbalagem: p.precoEmbalagem || 0,
               precoUnidade: p.precoUnidade || 0,
+              granularAtivo: Boolean(p.granularAtivo),
+              granularTipo: normalizeGranularTipo(p.granularTipo) || "GRAMA",
+              granularFatorConversao: p.granularFatorConversao || 0,
+              granularProdutoPaiId: p.granularProdutoPaiId || "",
               ncm: p.ncm || "00000000",
               cest: p.cest || "",
               tipo_tributacao: p.tipo_tributacao || "NORMAL",
@@ -575,6 +673,51 @@ export function ProdutosTab() {
       await adminApi.ajustarEstoque(adjustingProduct.id, adjustReason, ajustes);
       setAdjustModalOpen(false);
       loadData();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const openReplenishModal = (produto: Produto) => {
+    if (!isGranularProduct(produto)) {
+      alert("Este produto não possui vínculo granular configurado.");
+      return;
+    }
+    setReplenishProduct(produto);
+    setReplenishQty(0);
+    setReplenishReason("");
+    setReplenishModalOpen(true);
+  };
+
+  const replenishConsumption = useMemo(() => {
+    if (!replenishProduct) return 0;
+    const fator = Number(replenishProduct.granularFatorConversao || 0);
+    if (!Number.isFinite(fator) || fator <= 0) return 0;
+    const qtd = Number(replenishQty || 0);
+    if (!Number.isFinite(qtd) || qtd <= 0) return 0;
+    return qtd / fator;
+  }, [replenishProduct, replenishQty]);
+
+  const handleConfirmReplenish = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!replenishProduct) return;
+
+    const qtd = Number(replenishQty || 0);
+    if (!Number.isFinite(qtd) || qtd <= 0) {
+      alert("Informe uma quantidade maior que zero.");
+      return;
+    }
+
+    try {
+      await adminApi.reporEstoqueGranular(replenishProduct.id, {
+        quantidadeGranular: qtd,
+        motivo: replenishReason.trim() || undefined,
+      });
+      setReplenishModalOpen(false);
+      setReplenishProduct(null);
+      setReplenishQty(0);
+      setReplenishReason("");
+      await loadData();
     } catch (e: any) {
       alert(e.message);
     }
@@ -821,6 +964,11 @@ export function ProdutosTab() {
                       <span className="text-[10px] text-slate-400">
                         {p.categoria || "-"}
                       </span>
+                      {isGranularProduct(p) && (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                          Granular {getGranularUnitLabel(p)}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -881,7 +1029,8 @@ export function ProdutosTab() {
                   <td className="px-6 py-4">
                     <div className="flex flex-col gap-1">
                       <div className="font-bold text-slate-800">
-                        {p.estoque} un
+                        {formatQty(p.estoque)}{" "}
+                        {isGranularProduct(p) ? getGranularUnitLabel(p) : "un"}
                       </div>
                       <div className="flex items-center gap-2 text-[10px]">
                         <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex items-center gap-1 border border-slate-200">
@@ -923,6 +1072,15 @@ export function ProdutosTab() {
                           />
                         </svg>
                       </button>
+                      {isGranularProduct(p) && (
+                        <button
+                          onClick={() => openReplenishModal(p)}
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 p-2 rounded transition-colors"
+                          title="Repor estoque granular (baixa do principal)"
+                        >
+                          <Icons.ShoppingBag />
+                        </button>
+                      )}
                       <button
                         onClick={() => openModal(p)}
                         className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded transition-colors"
@@ -1436,6 +1594,116 @@ export function ProdutosTab() {
             </div>
             <div className="border-t border-slate-200 pt-4">
               <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>{" "}
+                Granulação PDV
+              </h4>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.granularAtivo)}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      granularAtivo: e.target.checked,
+                      granularTipo: e.target.checked
+                        ? normalizeGranularTipo(prev.granularTipo) || "GRAMA"
+                        : "",
+                      granularProdutoPaiId: e.target.checked
+                        ? prev.granularProdutoPaiId || ""
+                        : "",
+                      granularFatorConversao: e.target.checked
+                        ? Number(prev.granularFatorConversao || 0)
+                        : 0,
+                    }))
+                  }
+                />
+                Produto vendido de forma granular no PDV
+              </label>
+
+              {Boolean(form.granularAtivo) && (
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                        Tipo Granular
+                      </label>
+                      <select
+                        className="w-full p-2.5 border rounded-lg bg-white"
+                        value={normalizeGranularTipo(form.granularTipo) || ""}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            granularTipo: normalizeGranularTipo(e.target.value),
+                          })
+                        }
+                      >
+                        <option value="">Selecione...</option>
+                        <option value="GRAMA">Gramas</option>
+                        <option value="UNIDADE">Unidade</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                        Produto Principal
+                      </label>
+                      <select
+                        className="w-full p-2.5 border rounded-lg bg-white"
+                        value={String(form.granularProdutoPaiId || "")}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            granularProdutoPaiId: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">Selecione...</option>
+                        {granularParentOptions.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nome} | {p.codigo_barras}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                        Granular por 1 Unidade do Principal
+                      </label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        className="w-full p-2.5 border rounded-lg"
+                        placeholder="Ex: 500 (gramas) ou 100 (unidades)"
+                        value={Number(form.granularFatorConversao || 0)}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            granularFatorConversao: parseFloat(
+                              e.target.value || "0",
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  {selectedGranularParent && (
+                    <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded-lg">
+                      Produto principal vinculado:{" "}
+                      <strong>{selectedGranularParent.nome}</strong> | Estoque
+                      atual: <strong>{formatQty(selectedGranularParent.estoque)}</strong>{" "}
+                      un
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-500">
+                    Exemplo: se 1 pacote gera 500g para venda no balcão, informe
+                    tipo <strong>Gramas</strong> e fator <strong>500</strong>.
+                    Ao repor 500g, o sistema baixa 1 un do produto principal.
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="border-t border-slate-200 pt-4">
+              <h4 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>{" "}
                 Precificação
               </h4>
@@ -1540,11 +1808,15 @@ export function ProdutosTab() {
                   <div className="flex gap-2">
                     <input
                       type="number"
+                      step="0.01"
                       className={`w-full p-2.5 border rounded-lg font-bold ${isAdmin ? "bg-white border-red-200 text-red-900" : "bg-slate-100 text-slate-600 cursor-not-allowed"}`}
                       readOnly={!isAdmin}
                       value={form.estoque}
                       onChange={(e) =>
-                        setForm({ ...form, estoque: parseInt(e.target.value) })
+                        setForm({
+                          ...form,
+                          estoque: parseFloat(e.target.value || "0"),
+                        })
                       }
                     />
                     {editingId && (
@@ -1787,12 +2059,13 @@ export function ProdutosTab() {
                           <input
                             type="number"
                             min="0"
+                            step="0.01"
                             className="w-full p-1.5 border border-slate-300 rounded text-center font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
                             value={l.qtdAtual}
                             onChange={(e) =>
                               handleAdjustLoteChange(
                                 l.id,
-                                parseInt(e.target.value),
+                                parseFloat(e.target.value || "0"),
                               )
                             }
                           />
@@ -1861,6 +2134,105 @@ export function ProdutosTab() {
               </button>
             </div>
           </form>
+        </Modal>
+
+        {/* MODAL REPOSIÇÃO GRANULAR */}
+        <Modal
+          open={replenishModalOpen}
+          title="Reposição de Estoque Granular"
+          onClose={() => setReplenishModalOpen(false)}
+        >
+          {!replenishProduct ? (
+            <div className="text-sm text-slate-500">Produto não selecionado.</div>
+          ) : (
+            <form onSubmit={handleConfirmReplenish} className="space-y-5">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                <div>
+                  Produto granular: <strong>{replenishProduct.nome}</strong>
+                </div>
+                <div className="mt-1">
+                  Produto principal:{" "}
+                  <strong>
+                    {replenishProduct.granularProdutoPai?.nome || "Não vinculado"}
+                  </strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Quantidade para Repor ({getGranularUnitLabel(replenishProduct)})
+                </label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  className="w-full p-2.5 border rounded-lg font-bold"
+                  value={replenishQty || ""}
+                  onChange={(e) =>
+                    setReplenishQty(parseFloat(e.target.value || "0"))
+                  }
+                  required
+                />
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-700 space-y-1">
+                <div>
+                  Conversão:{" "}
+                  <strong>
+                    {formatQty(Number(replenishProduct.granularFatorConversao || 0))}{" "}
+                    {getGranularUnitLabel(replenishProduct)} = 1 un do principal
+                  </strong>
+                </div>
+                <div>
+                  Baixa prevista no principal:{" "}
+                  <strong>{formatQty(replenishConsumption)} un</strong>
+                </div>
+                <div>
+                  Estoque principal atual:{" "}
+                  <strong>
+                    {formatQty(Number(replenishProduct.granularProdutoPai?.estoque || 0))}{" "}
+                    un
+                  </strong>
+                </div>
+                <div>
+                  Estoque principal após reposição:{" "}
+                  <strong>
+                    {formatQty(
+                      Number(replenishProduct.granularProdutoPai?.estoque || 0) -
+                        replenishConsumption,
+                    )}{" "}
+                    un
+                  </strong>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Observação (Opcional)
+                </label>
+                <textarea
+                  className="w-full p-2.5 border rounded-lg"
+                  rows={3}
+                  value={replenishReason}
+                  onChange={(e) => setReplenishReason(e.target.value)}
+                  placeholder="Ex: reposição para balcão de autoatendimento."
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReplenishModalOpen(false)}
+                  className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg"
+                >
+                  Cancelar
+                </button>
+                <button className="px-6 py-2.5 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700">
+                  Confirmar Reposição
+                </button>
+              </div>
+            </form>
+          )}
         </Modal>
 
         {/* MODAL ADMIN CONFIRMATION */}
