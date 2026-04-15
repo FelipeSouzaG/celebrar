@@ -202,6 +202,16 @@ class AdminApi {
     });
   }
 
+  reporEstoqueGranular(
+    id: string,
+    data: { quantidadeGranular: number; motivo?: string },
+  ) {
+    return this.request(`/admin/produtos/${id}/reposicao-granular`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
   // --- SUPER ADMIN (PRODUTOS) ---
   adminUpdateLote(id: string, data: any) {
     return this.request(`/admin/lotes/${id}`, {
