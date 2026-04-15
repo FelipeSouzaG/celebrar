@@ -35,6 +35,24 @@ export interface Produto {
   preco_atacado: number;
   qtd_atacado: number;
   estoque: number;
+  granularAtivo?: boolean;
+  granularTipo?: "GRAMA" | "UNIDADE" | string | null;
+  granularFatorConversao?: number | null;
+  granularProdutoPaiId?: string | null;
+  granularProdutoPai?: {
+    id: string;
+    nome: string;
+    codigo_barras: string;
+    estoque: number;
+    embalagemUnidade?: string | null;
+  } | null;
+  granularFilhos?: Array<{
+    id: string;
+    nome: string;
+    codigo_barras: string;
+    granularTipo?: "GRAMA" | "UNIDADE" | string | null;
+    granularFatorConversao?: number | null;
+  }>;
 
   // BI Fields (Calculated by backend)
   lotesCount?: number;
@@ -424,4 +442,3 @@ export interface SessaoCaixaAdmin {
   >;
   resumo?: { total_dinheiro: number; total_outras_formas: number };
 }
-
