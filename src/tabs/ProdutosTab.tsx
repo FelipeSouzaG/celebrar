@@ -166,6 +166,9 @@ export function ProdutosTab() {
   );
   const [replenishQty, setReplenishQty] = useState<number>(0);
   const [replenishReason, setReplenishReason] = useState("");
+  const [granularParentQuery, setGranularParentQuery] = useState("");
+  const [granularParentSuggestionsOpen, setGranularParentSuggestionsOpen] =
+    useState(false);
 
   const loadData = async () => {
     try {
@@ -286,6 +289,31 @@ export function ProdutosTab() {
       null,
     [granularParentOptions, form.granularProdutoPaiId],
   );
+
+  const filteredGranularParentOptions = useMemo(() => {
+    const raw = granularParentQuery.trim().toLowerCase();
+    const barcodeQuery = normalizeBarcodeValue(granularParentQuery).toLowerCase();
+    const barcodeDigits = barcodeQuery.replace(/\D/g, "");
+
+    const base = granularParentOptions.filter((p) => {
+      if (!raw && !barcodeQuery) return true;
+
+      const nome = (p.nome || "").toLowerCase();
+      const codigo = (p.codigo_barras || "").toLowerCase();
+      const localizacao = (p.localizacao || "").toLowerCase();
+      const codigoDigits = codigo.replace(/\D/g, "");
+
+      return (
+        nome.includes(raw) ||
+        localizacao.includes(raw) ||
+        codigo.includes(raw) ||
+        (barcodeQuery && codigo.includes(barcodeQuery)) ||
+        (barcodeDigits && codigoDigits.includes(barcodeDigits))
+      );
+    });
+
+    return base.slice(0, 40);
+  }, [granularParentOptions, granularParentQuery]);
 
   const selectedLabelIds = useMemo(
     () => Object.keys(labelSelection).filter((id) => labelSelection[id]),
@@ -608,6 +636,11 @@ export function ProdutosTab() {
           : emptyProdutoForm,
       ),
     );
+    const parent =
+      p?.granularProdutoPaiId &&
+      produtos.find((item) => item.id === p.granularProdutoPaiId);
+    setGranularParentQuery(parent?.codigo_barras || "");
+    setGranularParentSuggestionsOpen(false);
     setModalOpen(true);
   };
 
@@ -1646,23 +1679,57 @@ export function ProdutosTab() {
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
                         Produto Principal
                       </label>
-                      <select
-                        className="w-full p-2.5 border rounded-lg bg-white"
-                        value={String(form.granularProdutoPaiId || "")}
-                        onChange={(e) =>
+                      <input
+                        type="text"
+                        className="w-full p-2.5 border rounded-lg bg-white font-mono"
+                        placeholder="Digite código de barras, descrição ou local..."
+                        value={granularParentQuery}
+                        onFocus={() => setGranularParentSuggestionsOpen(true)}
+                        onChange={(e) => {
+                          const value = normalizeSearchInputValue(e.target.value);
+                          setGranularParentQuery(value);
+                          setGranularParentSuggestionsOpen(true);
                           setForm({
                             ...form,
-                            granularProdutoPaiId: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">Selecione...</option>
-                        {granularParentOptions.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.nome} | {p.codigo_barras}
-                          </option>
-                        ))}
-                      </select>
+                            granularProdutoPaiId: "",
+                          });
+                        }}
+                      />
+                      {granularParentSuggestionsOpen && (
+                        <div className="mt-2 border border-slate-200 rounded-lg bg-white max-h-56 overflow-y-auto shadow-sm">
+                          {filteredGranularParentOptions.length === 0 ? (
+                            <div className="p-3 text-xs text-slate-400">
+                              Nenhum produto encontrado para a busca.
+                            </div>
+                          ) : (
+                            filteredGranularParentOptions.map((parent) => (
+                              <button
+                                key={parent.id}
+                                type="button"
+                                className={`w-full text-left px-3 py-2 border-b border-slate-100 last:border-b-0 hover:bg-amber-50 transition-colors ${form.granularProdutoPaiId === parent.id ? "bg-amber-50" : ""}`}
+                                onClick={() => {
+                                  setForm({
+                                    ...form,
+                                    granularProdutoPaiId: parent.id,
+                                  });
+                                  setGranularParentQuery(parent.codigo_barras);
+                                  setGranularParentSuggestionsOpen(false);
+                                }}
+                              >
+                                <div className="text-xs font-mono text-slate-500">
+                                  {parent.codigo_barras}
+                                </div>
+                                <div className="text-sm font-semibold text-slate-700">
+                                  {parent.nome}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Posição: {parent.localizacao || "Não informada"}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
