@@ -273,7 +273,10 @@ export function ProdutosTab() {
     return produtos.filter((p) => {
       const nome = (p.nome || "").toLowerCase();
       const codigo = (p.codigo_barras || "").toLowerCase();
-      return nome.includes(term) || codigo.includes(term);
+      const localizacao = (p.localizacao || "").toLowerCase();
+      return (
+        nome.includes(term) || codigo.includes(term) || localizacao.includes(term)
+      );
     });
   }, [produtos, labelSearch]);
 
@@ -2408,12 +2411,21 @@ export function ProdutosTab() {
       >
         <div className="space-y-4">
           <div className="flex flex-col gap-3">
-            <input
-              className="w-full p-2 border rounded-lg text-sm"
-              placeholder="Buscar por codigo ou descricao..."
-              value={labelSearch}
-              onChange={(e) => setLabelSearch(e.target.value)}
-            />
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+              <input
+                className="w-full p-2 border rounded-lg text-sm md:flex-1"
+                placeholder="Buscar por descricao, codigo de barras ou localizacao..."
+                value={labelSearch}
+                onChange={(e) => setLabelSearch(e.target.value)}
+              />
+              <button
+                onClick={handleGenerateLabels}
+                disabled={!hasSelectedLabels}
+                className="w-full md:w-auto md:min-w-[180px] bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg font-bold disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+              >
+                Gerar Etiquetas
+              </button>
+            </div>
             <div className="flex items-center gap-4 text-sm">
               <label className="flex items-center gap-2">
                 <input
@@ -2495,15 +2507,6 @@ export function ProdutosTab() {
               </tbody>
             </table>
           </div>
-
-          {hasSelectedLabels && (
-            <button
-              onClick={handleGenerateLabels}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-lg font-bold"
-            >
-              Gerar Etiquetas
-            </button>
-          )}
         </div>
       </Modal>
     </div>
