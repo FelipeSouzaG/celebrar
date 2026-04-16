@@ -94,6 +94,15 @@ const formatQty = (value: number, decimals = 3) => {
 const getGranularUnitLabel = (p?: Partial<Produto> | null) =>
   normalizeGranularTipo(p?.granularTipo) === "GRAMA" ? "g" : "un";
 
+const isWeightPackagingProduct = (p?: Partial<Produto> | null) =>
+  normalizeGranularTipo(p?.embalagemUnidade) === "GRAMA";
+
+const getWholesaleMinLabel = (p?: Partial<Produto> | null) => {
+  const min = Number(p?.qtd_atacado || 0);
+  const unit = isWeightPackagingProduct(p) ? "g" : "un";
+  return `${formatQty(min)} ${unit}`;
+};
+
 // Componente Badge de Markup
 const MarkupBadge = ({ custo, preco }: { custo: number; preco: number }) => {
   if (custo <= 0)
@@ -467,7 +476,7 @@ export function ProdutosTab() {
                 const descricao = p.nome || "";
                 const precoVarejo = formatMoney(p.preco_varejo || 0);
                 const precoAtacado = formatMoney(p.preco_atacado || 0);
-                const qtdAtacado = p.qtd_atacado || 0;
+                const qtdAtacadoLabel = getWholesaleMinLabel(p);
                 return `
                   <div class="label">
                     <div class="label-watermark">
@@ -490,7 +499,9 @@ export function ProdutosTab() {
                         <div class="price-value">${escapeHtml(
                           precoAtacado,
                         )}</div>
-                        <div class="price-sub">Mín: ${qtdAtacado} un</div>
+                        <div class="price-sub">Mín: ${escapeHtml(
+                          qtdAtacadoLabel,
+                        )}</div>
                       </div>
                     </div>
                   </div>
@@ -1054,7 +1065,7 @@ export function ProdutosTab() {
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
                       <span className="text-[10px] text-slate-500 bg-indigo-50 px-1 rounded border border-indigo-100">
-                        Mín: {p.qtd_atacado} un
+                        Mín: {getWholesaleMinLabel(p)}
                       </span>
                       <MarkupBadge
                         custo={p.custo_produto}
@@ -1850,7 +1861,8 @@ export function ProdutosTab() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                    Mín Atacado
+                    Quantidade Mínima Atacado (
+                    {isWeightPackagingProduct(form) ? "g" : "un"})
                   </label>
                   <input
                     type="number"
