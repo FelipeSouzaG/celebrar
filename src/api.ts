@@ -454,6 +454,10 @@ class AdminApi {
     return this.request<VendaFiscalXmlResponse>(`/vendas/${id}/xml`);
   }
 
+  downloadVendaFiscalXml(id: string) {
+    return this.requestBlob(`/vendas/${id}/xml/download`);
+  }
+
   // ADMIN DELETIONS
   deleteVenda(id: string) {
     return this.request<{ success: boolean }>(`/admin/vendas/${id}`, {
