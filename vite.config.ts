@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+//const adminBase = (process.env.VITE_ADMIN_BASE || "./").trim();
 const adminBase = (process.env.VITE_ADMIN_BASE || "./").trim();
 
 export default defineConfig({
