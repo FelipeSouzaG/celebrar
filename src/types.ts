@@ -392,7 +392,28 @@ export interface NfeResult {
     vFrete?: string;
     vOutro?: string;
     vNF?: string;
+    vTotTrib?: string;
   };
+  transporte?: {
+    modFrete?: string;
+  };
+  pagamento?: {
+    tPag?: string;
+    vPag?: string;
+  };
+  itens?: Array<{
+    codigo?: string;
+    descricao?: string;
+    ncm?: string;
+    cfop?: string;
+    unidade?: string;
+    quantidade?: string;
+    valorUnitario?: string;
+    valorTotal?: string;
+    csosn?: string;
+    cstPis?: string;
+    cstCofins?: string;
+  }>;
 }
 
 export interface VendaDiretaMutationResponse {
