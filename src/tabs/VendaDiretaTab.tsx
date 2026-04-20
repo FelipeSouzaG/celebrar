@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoLoja from "../img/logo.png";
+import logoLoja from "../img/logo.svg";
 import {
   Cliente,
   ContaBancaria,
@@ -723,7 +723,7 @@ export function VendaDiretaTab() {
       setAlertModal({
         open: true,
         title: "Venda Direta",
-        message: `${successMessage}\nEmissão de NF-e em teste está desativada no backend.`,
+        message: `${successMessage}\nEmissão de NF-e está desativada no backend.`,
       });
       return;
     }
@@ -737,7 +737,7 @@ export function VendaDiretaTab() {
       setAlertModal({
         open: true,
         title: "Venda Direta",
-        message: `${successMessage}\nNF-e autorizada em homologação. DANFE A4 aberto para impressão/salvar em PDF.`,
+        message: `${successMessage}\nNF-e autorizada em ${result.nfe?.homologacao ? "homologação" : "produção"}. DANFE A4 aberto para impressão/salvar em PDF.`,
       });
       return;
     }
