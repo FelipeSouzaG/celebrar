@@ -24,6 +24,7 @@ export interface Produto {
   cst_cofins?: string | null;
   origem?: string | null;
   codigoCatalogo?: string | null;
+  imagemCatalogo?: string | null;
   embalagemTipo?: string | null;
   embalagemUnidade?: string | null;
   embalagemQuantidade?: number;
