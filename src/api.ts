@@ -160,6 +160,14 @@ class AdminApi {
   }
 
   // --- Produtos ---
+  getCatalogoImageUrl(value?: string | null) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (raw.startsWith("/")) return `${API_URL}${raw}`;
+    return `${API_URL}/catalogo-imagens/${encodeURIComponent(raw)}`;
+  }
+
   getProdutos() {
     return this.request<Produto[]>("/admin/produtos");
   }
@@ -186,6 +194,25 @@ class AdminApi {
   }
   deleteProduto(id: string) {
     return this.request<{ success: boolean }>(`/admin/produtos/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  listCatalogoImagens() {
+    return this.request<{ baseUrl: string; arquivos: string[] }>(
+      "/admin/catalogo/imagens",
+    );
+  }
+
+  vincularImagemProduto(id: string, nomeArquivo: string) {
+    return this.request<Produto>(`/admin/produtos/${id}/imagem`, {
+      method: "PUT",
+      body: JSON.stringify({ nomeArquivo }),
+    });
+  }
+
+  removerImagemProduto(id: string) {
+    return this.request<Produto>(`/admin/produtos/${id}/imagem`, {
       method: "DELETE",
     });
   }
