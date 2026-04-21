@@ -1,17 +1,19 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoLoja from "../img/logo.svg";
+import logoLoja from "../img/logo.png";
 import {
   Cliente,
   ContaBancaria,
   NfeResult,
   Produto,
-  VendaFiscalXmlResponse,
   VendaDiretaMutationResponse,
+  VendaFiscalXmlResponse,
 } from "../types";
 import { formatDate, formatDateOnly, toInputDate } from "../utils";
+
+const CATALOGO_CATEGORIAS = ["Festas", "Embalagens", "Doces"] as const;
 
 export function VendaDiretaTab() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,6 +57,9 @@ export function VendaDiretaTab() {
   const [filterDataCriacao, setFilterDataCriacao] = useState("");
   const [filterDataEntrega, setFilterDataEntrega] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState("");
 
   const [form, setForm] = useState<any>({
     clienteId: "",
@@ -225,7 +230,9 @@ export function VendaDiretaTab() {
     getXmlTagBlocks(xml, tag)[0] || "";
 
   const getXmlTagValue = (xml: string, tag: string) =>
-    getXmlTagBlock(xml, tag).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+    getXmlTagBlock(xml, tag)
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .trim();
 
   const mapNfeTpagLabel = (code?: string) => {
     const normalized = String(code || "").trim();
@@ -271,8 +278,10 @@ export function VendaDiretaTab() {
     const dhEmi = getXmlTagValue(xml, "dhEmi");
     const naturezaOperacao = getXmlTagValue(xml, "natOp");
     const consultaUrl = getXmlTagValue(xml, "urlChave");
-    const numero = Number(fiscal.numero || getXmlTagValue(xml, "nNF") || 0) || 0;
-    const serie = Number(fiscal.serie || getXmlTagValue(xml, "serie") || 0) || 0;
+    const numero =
+      Number(fiscal.numero || getXmlTagValue(xml, "nNF") || 0) || 0;
+    const serie =
+      Number(fiscal.serie || getXmlTagValue(xml, "serie") || 0) || 0;
     const detBlocks = getXmlTagBlocks(xml, "det");
     const itensXml = detBlocks.map((det) => {
       const prod = getXmlTagBlock(det, "prod");
@@ -286,13 +295,22 @@ export function VendaDiretaTab() {
         ncm: getXmlTagValue(prod, "NCM") || undefined,
         cfop: getXmlTagValue(prod, "CFOP") || undefined,
         unidade:
-          getXmlTagValue(prod, "uCom") || getXmlTagValue(prod, "uTrib") || undefined,
+          getXmlTagValue(prod, "uCom") ||
+          getXmlTagValue(prod, "uTrib") ||
+          undefined,
         quantidade:
-          getXmlTagValue(prod, "qCom") || getXmlTagValue(prod, "qTrib") || undefined,
+          getXmlTagValue(prod, "qCom") ||
+          getXmlTagValue(prod, "qTrib") ||
+          undefined,
         valorUnitario:
-          getXmlTagValue(prod, "vUnCom") || getXmlTagValue(prod, "vUnTrib") || undefined,
+          getXmlTagValue(prod, "vUnCom") ||
+          getXmlTagValue(prod, "vUnTrib") ||
+          undefined,
         valorTotal: getXmlTagValue(prod, "vProd") || undefined,
-        csosn: getXmlTagValue(icms, "CSOSN") || getXmlTagValue(icms, "CST") || undefined,
+        csosn:
+          getXmlTagValue(icms, "CSOSN") ||
+          getXmlTagValue(icms, "CST") ||
+          undefined,
         cstPis: getXmlTagValue(pis, "CST") || undefined,
         cstCofins: getXmlTagValue(cofins, "CST") || undefined,
       };
@@ -331,7 +349,9 @@ export function VendaDiretaTab() {
       },
       destinatario: {
         nome:
-          getXmlTagValue(destBlock, "xNome") || venda?.cliente?.nome || undefined,
+          getXmlTagValue(destBlock, "xNome") ||
+          venda?.cliente?.nome ||
+          undefined,
         documento:
           getXmlTagValue(destBlock, "CNPJ") ||
           getXmlTagValue(destBlock, "CPF") ||
@@ -424,7 +444,10 @@ export function VendaDiretaTab() {
     const enderecoDestLinha = [
       venda?.endereco_rua || destEndereco.logradouro || cliente?.rua || "-",
       venda?.endereco_numero || destEndereco.numero || cliente?.numero || "S/N",
-      venda?.endereco_complemento || destEndereco.complemento || cliente?.complemento || "",
+      venda?.endereco_complemento ||
+        destEndereco.complemento ||
+        cliente?.complemento ||
+        "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -460,7 +483,9 @@ export function VendaDiretaTab() {
     const numeroNota = nfe?.numero ?? "-";
     const naturezaOperacao = nfe?.naturezaOperacao || "VENDA DIRETA";
     const freteLabel =
-      nfe?.transporte?.modFrete === "9" ? "Sem frete" : nfe?.transporte?.modFrete || "-";
+      nfe?.transporte?.modFrete === "9"
+        ? "Sem frete"
+        : nfe?.transporte?.modFrete || "-";
     const pagamentoLabel = mapNfeTpagLabel(nfe?.pagamento?.tPag);
 
     const html = `<!doctype html>
@@ -693,7 +718,9 @@ export function VendaDiretaTab() {
   const handleDownloadVendaDiretaXml = async (venda: any) => {
     if (!venda?.id) return;
     try {
-      const { blob, filename } = await adminApi.downloadVendaFiscalXml(venda.id);
+      const { blob, filename } = await adminApi.downloadVendaFiscalXml(
+        venda.id,
+      );
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download =
@@ -723,7 +750,7 @@ export function VendaDiretaTab() {
       setAlertModal({
         open: true,
         title: "Venda Direta",
-        message: `${successMessage}\nEmissão de NF-e está desativada no backend.`,
+        message: `${successMessage}\nEmissão de NF-e em teste está desativada no backend.`,
       });
       return;
     }
@@ -737,7 +764,7 @@ export function VendaDiretaTab() {
       setAlertModal({
         open: true,
         title: "Venda Direta",
-        message: `${successMessage}\nNF-e autorizada em ${result.nfe?.homologacao ? "homologação" : "produção"}. DANFE A4 aberto para impressão/salvar em PDF.`,
+        message: `${successMessage}\nNF-e autorizada em homologação. DANFE A4 aberto para impressão/salvar em PDF.`,
       });
       return;
     }
@@ -943,6 +970,32 @@ export function VendaDiretaTab() {
     return true;
   });
 
+  const filteredCatalogProdutos = useMemo(() => {
+    const term = String(catalogSearch || "")
+      .trim()
+      .toLowerCase();
+    return produtos.filter((p) => {
+      const searchOk =
+        !term ||
+        String(p.codigo_barras || "")
+          .toLowerCase()
+          .includes(term) ||
+        String(p.nome || "")
+          .toLowerCase()
+          .includes(term) ||
+        String(p.codigoCatalogo || "")
+          .toLowerCase()
+          .includes(term);
+      if (!searchOk) return false;
+      if (!catalogCategory) return true;
+      return (
+        String(p.categoria || "")
+          .trim()
+          .toLowerCase() === catalogCategory.toLowerCase()
+      );
+    });
+  }, [produtos, catalogSearch, catalogCategory]);
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shadow-sm">
@@ -952,7 +1005,13 @@ export function VendaDiretaTab() {
             Crie pedidos rápidos e gerencie status de entrega e pagamento.
           </p>
         </div>
-        <div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCatalogModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
+          >
+            <Icons.Product /> Catálogo
+          </button>
           <button
             onClick={() => {
               setEditingId(null);
@@ -1248,6 +1307,111 @@ export function VendaDiretaTab() {
           </table>
         </div>
       </div>
+
+      <Modal
+        open={catalogModalOpen}
+        title="Catálogo de Produtos"
+        onClose={() => setCatalogModalOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-3">
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Busca
+              </label>
+              <input
+                className="w-full p-2.5 border rounded-lg"
+                placeholder="Código de barras, descrição ou código de catálogo..."
+                value={catalogSearch}
+                onChange={(e) => setCatalogSearch(e.target.value)}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">
+                Categoria
+              </label>
+              <select
+                className="w-full p-2.5 border rounded-lg"
+                value={catalogCategory}
+                onChange={(e) => setCatalogCategory(e.target.value)}
+              >
+                <option value="">Todas</option>
+                {CATALOGO_CATEGORIAS.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="text-xs text-slate-500">
+            {filteredCatalogProdutos.length} produto(s) no catálogo.
+          </div>
+
+          <div className="max-h-[65vh] overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 pr-1">
+            {filteredCatalogProdutos.map((p) => {
+              const imagemUrl = adminApi.getCatalogoImageUrl(p.imagemCatalogo);
+              return (
+                <div
+                  key={p.id}
+                  className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden"
+                >
+                  <div className="h-44 bg-slate-100 flex items-center justify-center">
+                    {imagemUrl ? (
+                      <img
+                        src={imagemUrl}
+                        alt={p.nome}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xs text-slate-400">Sem imagem</span>
+                    )}
+                  </div>
+                  <div className="p-3 space-y-2">
+                    <div className="text-[11px] text-slate-500 font-mono">
+                      {p.codigo_barras || "-"}
+                    </div>
+                    <div className="font-semibold text-slate-800">{p.nome}</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                        <div className="text-[10px] uppercase text-slate-500">
+                          Varejo
+                        </div>
+                        <div className="font-bold text-slate-800">
+                          {(p.preco_varejo || 0).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </div>
+                      </div>
+                      <div className="bg-indigo-50 p-2 rounded border border-indigo-100">
+                        <div className="text-[10px] uppercase text-indigo-600">
+                          Atacado
+                        </div>
+                        <div className="font-bold text-indigo-700">
+                          {(p.preco_atacado || 0).toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
+                        </div>
+                        <div className="text-[10px] text-indigo-600 mt-0.5">
+                          Mín: {p.qtd_atacado || 0}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredCatalogProdutos.length === 0 && (
+              <div className="col-span-full text-center text-slate-400 p-8 border border-dashed rounded-lg">
+                Nenhum produto encontrado para os filtros informados.
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={modalOpen}
@@ -1919,17 +2083,23 @@ export function VendaDiretaTab() {
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-xs text-slate-400 uppercase">Código</div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Código
+                    </div>
                     <div className="font-mono font-bold">
                       {selectedVenda.codigo || selectedVenda.id}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-slate-400 uppercase">Status</div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Status
+                    </div>
                     <div className="font-bold">{selectedVenda.status}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-slate-400 uppercase">Cliente</div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Cliente
+                    </div>
                     <div className="font-bold">
                       {selectedVenda.cliente?.nome || "—"}
                     </div>
@@ -2055,7 +2225,9 @@ export function VendaDiretaTab() {
               <div className="space-y-4 animate-fadeIn">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <div className="text-xs text-slate-400 uppercase">Modelo</div>
+                    <div className="text-xs text-slate-400 uppercase">
+                      Modelo
+                    </div>
                     <div className="font-bold">
                       {selectedVenda.notaFiscalModelo || "-"}
                     </div>
@@ -2130,9 +2302,7 @@ export function VendaDiretaTab() {
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      handleOpenVendaDiretaDanfePdf(selectedVenda)
-                    }
+                    onClick={() => handleOpenVendaDiretaDanfePdf(selectedVenda)}
                     disabled={
                       String(selectedVenda.notaFiscalModelo || "") !== "55"
                     }
