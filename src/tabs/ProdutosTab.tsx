@@ -147,6 +147,7 @@ export function ProdutosTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
+  const [catalogImageModalOpen, setCatalogImageModalOpen] = useState(false);
   const [adminActionModal, setAdminActionModal] = useState<{
     open: boolean;
     title: string;
@@ -178,6 +179,12 @@ export function ProdutosTab() {
   const [granularParentQuery, setGranularParentQuery] = useState("");
   const [granularParentSuggestionsOpen, setGranularParentSuggestionsOpen] =
     useState(false);
+  const [catalogImageFiles, setCatalogImageFiles] = useState<string[]>([]);
+  const [catalogImageQuery, setCatalogImageQuery] = useState("");
+  const [catalogImageLoading, setCatalogImageLoading] = useState(false);
+  const [catalogImageProduct, setCatalogImageProduct] = useState<Produto | null>(
+    null,
+  );
 
   const loadData = async () => {
     try {
@@ -681,6 +688,53 @@ export function ProdutosTab() {
     }
   };
 
+  const openCatalogImageModal = async (produto: Produto) => {
+    setCatalogImageProduct(produto);
+    setCatalogImageQuery("");
+    setCatalogImageFiles([]);
+    setCatalogImageLoading(true);
+    setCatalogImageModalOpen(true);
+    try {
+      const response = await adminApi.listCatalogoImagens();
+      setCatalogImageFiles(response.arquivos || []);
+    } catch (e: any) {
+      alert(e?.message || "Erro ao carregar imagens da pasta de catálogo.");
+      setCatalogImageModalOpen(false);
+    } finally {
+      setCatalogImageLoading(false);
+    }
+  };
+
+  const filteredCatalogImageFiles = useMemo(() => {
+    const term = String(catalogImageQuery || "").trim().toLowerCase();
+    if (!term) return catalogImageFiles;
+    return catalogImageFiles.filter((name) =>
+      String(name || "").toLowerCase().includes(term),
+    );
+  }, [catalogImageFiles, catalogImageQuery]);
+
+  const handleSelectCatalogImage = async (nomeArquivo: string) => {
+    if (!catalogImageProduct) return;
+    try {
+      await adminApi.vincularImagemProduto(catalogImageProduct.id, nomeArquivo);
+      setCatalogImageModalOpen(false);
+      setCatalogImageProduct(null);
+      await loadData();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível vincular a imagem ao produto.");
+    }
+  };
+
+  const handleRemoveProductImage = async (produto: Produto) => {
+    if (!confirm(`Remover imagem do produto "${produto.nome}"?`)) return;
+    try {
+      await adminApi.removerImagemProduto(produto.id);
+      await loadData();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível remover a imagem do produto.");
+    }
+  };
+
   const openAdjustModal = async () => {
     if (!editingId) return;
     setModalOpen(false); // Fecha modal de edição
@@ -1126,6 +1180,23 @@ export function ProdutosTab() {
                           title="Repor estoque granular (baixa do principal)"
                         >
                           <Icons.ShoppingBag />
+                        </button>
+                      )}
+                      {!p.imagemCatalogo ? (
+                        <button
+                          onClick={() => openCatalogImageModal(p)}
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-2 rounded transition-colors"
+                          title="Incluir imagem do catálogo"
+                        >
+                          <Icons.Plus />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRemoveProductImage(p)}
+                          className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 p-2 rounded transition-colors"
+                          title="Excluir imagem do catálogo"
+                        >
+                          <Icons.Trash />
                         </button>
                       )}
                       <button
@@ -2318,6 +2389,52 @@ export function ProdutosTab() {
         </Modal>
 
         {/* MODAL ADMIN CONFIRMATION */}
+        <Modal
+          open={catalogImageModalOpen}
+          title={
+            catalogImageProduct
+              ? `Selecionar imagem: ${catalogImageProduct.nome}`
+              : "Selecionar imagem"
+          }
+          onClose={() => {
+            setCatalogImageModalOpen(false);
+            setCatalogImageProduct(null);
+          }}
+        >
+          <div className="space-y-4">
+            <div className="text-xs text-slate-500">
+              Pasta de imagens: <code>backend/catalogo-imagens</code>
+            </div>
+            <input
+              className="w-full p-2.5 border rounded-lg"
+              placeholder="Filtrar nome do arquivo..."
+              value={catalogImageQuery}
+              onChange={(e) => setCatalogImageQuery(e.target.value)}
+            />
+
+            {catalogImageLoading ? (
+              <div className="text-sm text-slate-500 p-4">Carregando...</div>
+            ) : filteredCatalogImageFiles.length === 0 ? (
+              <div className="text-sm text-slate-400 p-4 border rounded-lg">
+                Nenhuma imagem encontrada na pasta.
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto border rounded-lg divide-y">
+                {filteredCatalogImageFiles.map((fileName) => (
+                  <button
+                    key={fileName}
+                    type="button"
+                    onClick={() => handleSelectCatalogImage(fileName)}
+                    className="w-full text-left p-3 hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="font-medium text-slate-700">{fileName}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Modal>
+
         <Modal
           open={adminActionModal.open}
           title={adminActionModal.title}
