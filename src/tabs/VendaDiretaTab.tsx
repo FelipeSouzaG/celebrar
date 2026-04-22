@@ -60,6 +60,7 @@ export function VendaDiretaTab() {
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("");
+  const [selectedCatalogIds, setSelectedCatalogIds] = useState<string[]>([]);
 
   const [form, setForm] = useState<any>({
     clienteId: "",
@@ -996,6 +997,164 @@ export function VendaDiretaTab() {
     });
   }, [produtos, catalogSearch, catalogCategory]);
 
+  const filteredCatalogIds = useMemo(
+    () => filteredCatalogProdutos.map((p) => p.id),
+    [filteredCatalogProdutos],
+  );
+
+  const allFilteredCatalogSelected =
+    filteredCatalogIds.length > 0 &&
+    filteredCatalogIds.every((id) => selectedCatalogIds.includes(id));
+
+  const selectedCatalogProdutos = useMemo(
+    () => produtos.filter((p) => selectedCatalogIds.includes(p.id)),
+    [produtos, selectedCatalogIds],
+  );
+
+  const toggleCatalogProductSelection = (produtoId: string) => {
+    setSelectedCatalogIds((prev) =>
+      prev.includes(produtoId)
+        ? prev.filter((id) => id !== produtoId)
+        : [...prev, produtoId],
+    );
+  };
+
+  const toggleSelectAllFilteredCatalog = () => {
+    setSelectedCatalogIds((prev) => {
+      if (allFilteredCatalogSelected) {
+        return prev.filter((id) => !filteredCatalogIds.includes(id));
+      }
+      return Array.from(new Set([...prev, ...filteredCatalogIds]));
+    });
+  };
+
+  const handleGenerateCatalogPdf = () => {
+    if (selectedCatalogProdutos.length === 0) {
+      setAlertModal({
+        open: true,
+        title: "Catálogo em PDF",
+        message:
+          "Selecione ao menos um item no catálogo para gerar o PDF do cliente.",
+      });
+      return;
+    }
+
+    const rowsHtml = selectedCatalogProdutos
+      .map((p) => {
+        const imagemUrl = adminApi.getCatalogoImageUrl(p.imagemCatalogo);
+        const precoVarejo = Number(p.preco_varejo || 0).toLocaleString(
+          "pt-BR",
+          {
+            style: "currency",
+            currency: "BRL",
+          },
+        );
+        const precoAtacado = Number(p.preco_atacado || 0).toLocaleString(
+          "pt-BR",
+          {
+            style: "currency",
+            currency: "BRL",
+          },
+        );
+        return `<tr>
+          <td class="img-col">
+            ${
+              imagemUrl
+                ? `<img src="${escapeHtml(imagemUrl)}" alt="${escapeHtml(p.nome || "Produto")}" />`
+                : `<div class="no-img">Sem imagem</div>`
+            }
+          </td>
+          <td class="info-col">
+            <div class="label">Código de barras</div>
+            <div class="value mono">${escapeHtml(p.codigo_barras || "-")}</div>
+            <div class="label">Descrição</div>
+            <div class="value">${escapeHtml(p.nome || "-")}</div>
+          </td>
+          <td class="pricing-col">
+            <div class="price-box">
+              <div class="label">Varejo</div>
+              <div class="price">${escapeHtml(precoVarejo)}</div>
+            </div>
+            <div class="price-box atacado">
+              <div class="label">Atacado</div>
+              <div class="price">${escapeHtml(precoAtacado)}</div>
+              <div class="hint">Mín: ${escapeHtml(String(p.qtd_atacado || 0))}</div>
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Catálogo de Produtos</title>
+    <style>
+      @page { size: A4 portrait; margin: 10mm; }
+      body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; font-size: 11px; }
+      h1 { margin: 0 0 8px; font-size: 18px; }
+      .sub { margin: 0 0 12px; color: #475569; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      td { border: 1px solid #cbd5e1; vertical-align: top; padding: 8px; }
+      .img-col { width: 24%; }
+      .info-col { width: 46%; }
+      .pricing-col { width: 30%; }
+      img { width: 100%; height: 110px; object-fit: contain; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
+      .no-img { width: 100%; height: 110px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; color: #94a3b8; }
+      .label { text-transform: uppercase; font-size: 9px; color: #64748b; font-weight: 700; margin-top: 4px; }
+      .value { font-size: 12px; font-weight: 600; margin-top: 2px; }
+      .mono { font-family: "Courier New", monospace; font-size: 11px; }
+      .price-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+      .price-box.atacado { background: #eef2ff; border-color: #c7d2fe; }
+      .price { font-size: 13px; font-weight: 700; margin-top: 2px; }
+      .hint { font-size: 10px; color: #475569; margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <h1>Catálogo de Produtos</h1>
+    <p class="sub">Total de itens selecionados: ${selectedCatalogProdutos.length}</p>
+    <table>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+  </body>
+</html>`;
+
+    const frame = document.createElement("iframe");
+    frame.style.position = "fixed";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    document.body.appendChild(frame);
+
+    const win = frame.contentWindow;
+    if (!win) {
+      document.body.removeChild(frame);
+      setAlertModal({
+        open: true,
+        title: "Catálogo em PDF",
+        message: "Não foi possível abrir a pré-visualização do catálogo.",
+      });
+      return;
+    }
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+
+    setTimeout(() => {
+      win.focus();
+      win.print();
+      setTimeout(() => {
+        if (document.body.contains(frame)) document.body.removeChild(frame);
+      }, 600);
+    }, 250);
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shadow-sm">
@@ -1314,7 +1473,7 @@ export function VendaDiretaTab() {
         onClose={() => setCatalogModalOpen(false)}
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
             <div className="md:col-span-3">
               <label className="text-xs font-bold text-slate-500 uppercase">
                 Busca
@@ -1343,69 +1502,133 @@ export function VendaDiretaTab() {
                 ))}
               </select>
             </div>
+            <div className="md:col-span-1 flex items-end">
+              <button
+                type="button"
+                onClick={handleGenerateCatalogPdf}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold"
+              >
+                Gerar PDF
+              </button>
+            </div>
           </div>
 
-          <div className="text-xs text-slate-500">
-            {filteredCatalogProdutos.length} produto(s) no catálogo.
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{filteredCatalogProdutos.length} produto(s) no catálogo.</span>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allFilteredCatalogSelected}
+                  onChange={toggleSelectAllFilteredCatalog}
+                />
+                <span>Marcar/Desmarcar todos (filtro atual)</span>
+              </label>
+              <span>{selectedCatalogIds.length} selecionado(s)</span>
+            </div>
           </div>
 
-          <div className="max-h-[65vh] overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 pr-1">
+          <div className="max-h-[65vh] overflow-y-auto space-y-3 pr-1">
             {filteredCatalogProdutos.map((p) => {
               const imagemUrl = adminApi.getCatalogoImageUrl(p.imagemCatalogo);
               return (
                 <div
                   key={p.id}
-                  className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden"
+                  className="border border-slate-200 rounded-xl bg-white shadow-sm p-3 overflow-x-auto"
                 >
-                  <div className="h-44 bg-slate-100 flex items-center justify-center p-3">
-                    {imagemUrl ? (
-                      <img
-                        src={imagemUrl}
-                        alt={p.nome}
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-xs text-slate-400">Sem imagem</span>
-                    )}
-                  </div>
-                  <div className="p-3 space-y-2">
-                    <div className="text-[11px] text-slate-500 font-mono">
-                      {p.codigo_barras || "-"}
+                  <div className="min-w-[980px] grid grid-cols-[180px_1.6fr_1.2fr_1.2fr_200px] gap-3 items-stretch">
+                    <div className="h-32 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center p-2">
+                      {imagemUrl ? (
+                        <img
+                          src={imagemUrl}
+                          alt={p.nome}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">Sem imagem</span>
+                      )}
                     </div>
-                    <div className="font-semibold text-slate-800">{p.nome}</div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                        <div className="text-[10px] uppercase text-slate-500">
-                          Varejo
-                        </div>
-                        <div className="font-bold text-slate-800">
-                          {(p.preco_varejo || 0).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                      <div className="text-[10px] uppercase text-slate-500 font-bold">
+                        Informações do Produto
                       </div>
-                      <div className="bg-indigo-50 p-2 rounded border border-indigo-100">
-                        <div className="text-[10px] uppercase text-indigo-600">
-                          Atacado
-                        </div>
-                        <div className="font-bold text-indigo-700">
-                          {(p.preco_atacado || 0).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })}
-                        </div>
-                        <div className="text-[10px] text-indigo-600 mt-0.5">
-                          Mín: {p.qtd_atacado || 0}
-                        </div>
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Código de barras
                       </div>
+                      <div className="font-mono text-sm text-slate-700">
+                        {p.codigo_barras || "-"}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Descrição
+                      </div>
+                      <div className="font-semibold text-slate-800">{p.nome}</div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                      <div className="text-[10px] uppercase text-slate-500 font-bold">
+                        Estoque
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Quantidade em estoque
+                      </div>
+                      <div className="font-semibold text-slate-800">
+                        {Number(p.estoque || 0).toLocaleString("pt-BR")}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500">Lote</div>
+                      <div className="font-semibold text-slate-800">
+                        {p.lotesCount ? `${p.lotesCount} lote(s)` : "-"}
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500">
+                        Validade
+                      </div>
+                      <div className="font-semibold text-slate-800">-</div>
+                    </div>
+
+                    <div className="rounded-lg border border-indigo-100 p-3 bg-indigo-50">
+                      <div className="text-[10px] uppercase text-indigo-600 font-bold">
+                        Precificação
+                      </div>
+                      <div className="mt-2 text-[11px] text-indigo-500">Varejo</div>
+                      <div className="font-bold text-slate-800">
+                        {(p.preco_varejo || 0).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </div>
+                      <div className="mt-2 text-[11px] text-indigo-500">
+                        Atacado
+                      </div>
+                      <div className="font-bold text-indigo-700">
+                        {(p.preco_atacado || 0).toLocaleString("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        })}
+                      </div>
+                      <div className="text-[11px] text-indigo-600 mt-1">
+                        Quantidade mínima: {p.qtd_atacado || 0}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3 bg-white flex flex-col justify-center">
+                      <div className="text-[10px] uppercase text-slate-500 font-bold">
+                        Ações
+                      </div>
+                      <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedCatalogIds.includes(p.id)}
+                          onChange={() => toggleCatalogProductSelection(p.id)}
+                        />
+                        Incluir no PDF
+                      </label>
                     </div>
                   </div>
                 </div>
               );
             })}
             {filteredCatalogProdutos.length === 0 && (
-              <div className="col-span-full text-center text-slate-400 p-8 border border-dashed rounded-lg">
+              <div className="text-center text-slate-400 p-8 border border-dashed rounded-lg">
                 Nenhum produto encontrado para os filtros informados.
               </div>
             )}
