@@ -1596,7 +1596,7 @@ export function VendaDiretaTab() {
                   key={p.id}
                   className="border border-slate-200 rounded-xl bg-white shadow-sm p-3 overflow-x-auto"
                 >
-                  <div className="min-w-[860px] grid grid-cols-[170px_1.45fr_1.75fr_170px] gap-3 items-stretch">
+                  <div className="min-w-[780px] grid grid-cols-[170px_1.45fr_1.75fr_170px] gap-3 items-stretch">
                     <div className="h-32 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center p-2">
                       {imagemUrl ? (
                         <img
