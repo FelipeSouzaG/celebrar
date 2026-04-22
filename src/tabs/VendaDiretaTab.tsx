@@ -1039,49 +1039,91 @@ export function VendaDiretaTab() {
       return;
     }
 
-    const rowsHtml = selectedCatalogProdutos
-      .map((p) => {
-        const imagemUrl = adminApi.getCatalogoImageUrl(p.imagemCatalogo);
-        const precoVarejo = Number(p.preco_varejo || 0).toLocaleString(
-          "pt-BR",
-          {
-            style: "currency",
-            currency: "BRL",
-          },
-        );
-        const precoAtacado = Number(p.preco_atacado || 0).toLocaleString(
-          "pt-BR",
-          {
-            style: "currency",
-            currency: "BRL",
-          },
-        );
-        return `<tr>
-          <td class="img-col">
-            ${
-              imagemUrl
-                ? `<img src="${escapeHtml(imagemUrl)}" alt="${escapeHtml(p.nome || "Produto")}" />`
-                : `<div class="no-img">Sem imagem</div>`
-            }
-          </td>
-          <td class="info-col">
-            <div class="label">Código de barras</div>
-            <div class="value mono">${escapeHtml(p.codigo_barras || "-")}</div>
-            <div class="label">Descrição</div>
-            <div class="value">${escapeHtml(p.nome || "-")}</div>
-          </td>
-          <td class="pricing-col">
-            <div class="price-box">
-              <div class="label">Varejo</div>
-              <div class="price">${escapeHtml(precoVarejo)}</div>
-            </div>
-            <div class="price-box atacado">
-              <div class="label">Atacado</div>
-              <div class="price">${escapeHtml(precoAtacado)}</div>
-              <div class="hint">Mín: ${escapeHtml(String(p.qtd_atacado || 0))}</div>
-            </div>
-          </td>
-        </tr>`;
+    const categoryOrder = ["Doces", "Festas", "Embalagens"];
+    const groupedByCategory = selectedCatalogProdutos.reduce(
+      (acc, p) => {
+        const key = String(p.categoria || "")
+          .trim()
+          .toLowerCase();
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(p);
+        return acc;
+      },
+      {} as Record<string, Produto[]>,
+    );
+
+    const categoriesForPdf = [
+      ...categoryOrder.filter(
+        (cat) => groupedByCategory[cat.toLowerCase()]?.length > 0,
+      ),
+      ...Object.keys(groupedByCategory)
+        .filter(
+          (k) =>
+            !categoryOrder.some((cat) => cat.toLowerCase() === k) &&
+            groupedByCategory[k]?.length > 0,
+        )
+        .map((k) => groupedByCategory[k][0]?.categoria || "Sem categoria"),
+    ];
+
+    const sectionsHtml = categoriesForPdf
+      .map((categoryLabel) => {
+        const products = groupedByCategory[String(categoryLabel).toLowerCase()];
+        if (!products?.length) return "";
+
+        const rowsHtml = products
+          .map((p) => {
+            const imagemUrl = adminApi.getCatalogoImageUrl(p.imagemCatalogo);
+            const precoVarejo = Number(p.preco_varejo || 0).toLocaleString(
+              "pt-BR",
+              {
+                style: "currency",
+                currency: "BRL",
+              },
+            );
+            const precoAtacado = Number(p.preco_atacado || 0).toLocaleString(
+              "pt-BR",
+              {
+                style: "currency",
+                currency: "BRL",
+              },
+            );
+            return `<tr>
+              <td class="img-col">
+                ${
+                  imagemUrl
+                    ? `<img src="${escapeHtml(imagemUrl)}" alt="${escapeHtml(p.nome || "Produto")}" />`
+                    : `<div class="no-img">Sem imagem</div>`
+                }
+              </td>
+              <td class="info-col">
+                <div class="label">Código de barras</div>
+                <div class="value mono">${escapeHtml(p.codigo_barras || "-")}</div>
+                <div class="label">Descrição</div>
+                <div class="value">${escapeHtml(p.nome || "-")}</div>
+              </td>
+              <td class="pricing-col">
+                <div class="price-box">
+                  <div class="label">Varejo</div>
+                  <div class="price">${escapeHtml(precoVarejo)}</div>
+                </div>
+                <div class="price-box atacado">
+                  <div class="label">Atacado</div>
+                  <div class="price">${escapeHtml(precoAtacado)}</div>
+                  <div class="hint">Mín: ${escapeHtml(String(p.qtd_atacado || 0))}</div>
+                </div>
+              </td>
+            </tr>`;
+          })
+          .join("");
+
+        return `<section class="category-section">
+          <h2>${escapeHtml(categoryLabel || "Sem categoria")}</h2>
+          <table>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </section>`;
       })
       .join("");
 
@@ -1093,8 +1135,16 @@ export function VendaDiretaTab() {
     <style>
       @page { size: A4 portrait; margin: 10mm; }
       body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; font-size: 11px; }
-      h1 { margin: 0 0 8px; font-size: 18px; }
-      .sub { margin: 0 0 12px; color: #475569; }
+      h1 { margin: 0; font-size: 20px; letter-spacing: 0.2px; }
+      h2 { margin: 0 0 8px; font-size: 14px; color: #334155; text-transform: uppercase; }
+      .sub { margin: 4px 0 0; color: #475569; }
+      .header { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+      .company { display: grid; grid-template-columns: 72px 1fr; gap: 10px; align-items: center; }
+      .logo { width: 72px; height: 72px; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; }
+      .company-name { font-weight: 700; font-size: 14px; color: #0f172a; }
+      .company-info { margin-top: 2px; color: #334155; font-size: 11px; }
+      .title-wrap { text-align: right; }
+      .category-section { margin-top: 12px; }
       table { width: 100%; border-collapse: collapse; table-layout: fixed; }
       td { border: 1px solid #cbd5e1; vertical-align: top; padding: 8px; }
       .img-col { width: 24%; }
@@ -1112,13 +1162,21 @@ export function VendaDiretaTab() {
     </style>
   </head>
   <body>
-    <h1>Catálogo de Produtos</h1>
-    <p class="sub">Total de itens selecionados: ${selectedCatalogProdutos.length}</p>
-    <table>
-      <tbody>
-        ${rowsHtml}
-      </tbody>
-    </table>
+    <div class="header">
+      <div class="company">
+        <img src="${logoLoja}" alt="Logo Celebrar" class="logo" />
+        <div>
+          <div class="company-name">CELEBRAR FESTAS E EMBALAGENS LTDA</div>
+          <div class="company-info">AVENIDA SENADOR LEVINDO COELHO, 1995 - VALE DO JATOBÁ - BELO HORIZONTE/MG</div>
+          <div class="company-info">Telefone/WhatsApp: (31) 97361-4998</div>
+        </div>
+      </div>
+      <div class="title-wrap">
+        <h1>CATÁLOGO DE PRODUTOS</h1>
+        <p class="sub">Total de itens selecionados: ${selectedCatalogProdutos.length}</p>
+      </div>
+    </div>
+    ${sectionsHtml}
   </body>
 </html>`;
 
@@ -1503,13 +1561,15 @@ export function VendaDiretaTab() {
               </select>
             </div>
             <div className="md:col-span-1 flex items-end">
-              <button
-                type="button"
-                onClick={handleGenerateCatalogPdf}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold"
-              >
-                Gerar PDF
-              </button>
+              {selectedCatalogIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleGenerateCatalogPdf}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold"
+                >
+                  Gerar PDF
+                </button>
+              )}
             </div>
           </div>
 
@@ -1536,7 +1596,7 @@ export function VendaDiretaTab() {
                   key={p.id}
                   className="border border-slate-200 rounded-xl bg-white shadow-sm p-3 overflow-x-auto"
                 >
-                  <div className="min-w-[980px] grid grid-cols-[180px_1.6fr_1.2fr_1.2fr_200px] gap-3 items-stretch">
+                  <div className="min-w-[920px] grid grid-cols-[180px_1.9fr_1.6fr_200px] gap-3 items-stretch">
                     <div className="h-32 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center p-2">
                       {imagemUrl ? (
                         <img
@@ -1565,29 +1625,9 @@ export function VendaDiretaTab() {
                       <div className="font-semibold text-slate-800">{p.nome}</div>
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
-                      <div className="text-[10px] uppercase text-slate-500 font-bold">
-                        Estoque
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">
-                        Quantidade em estoque
-                      </div>
-                      <div className="font-semibold text-slate-800">
-                        {Number(p.estoque || 0).toLocaleString("pt-BR")}
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">Lote</div>
-                      <div className="font-semibold text-slate-800">
-                        {p.lotesCount ? `${p.lotesCount} lote(s)` : "-"}
-                      </div>
-                      <div className="mt-2 text-[11px] text-slate-500">
-                        Validade
-                      </div>
-                      <div className="font-semibold text-slate-800">-</div>
-                    </div>
-
                     <div className="rounded-lg border border-indigo-100 p-3 bg-indigo-50">
                       <div className="text-[10px] uppercase text-indigo-600 font-bold">
-                        Precificação
+                        Preço e Estoque
                       </div>
                       <div className="mt-2 text-[11px] text-indigo-500">Varejo</div>
                       <div className="font-bold text-slate-800">
@@ -1607,6 +1647,12 @@ export function VendaDiretaTab() {
                       </div>
                       <div className="text-[11px] text-indigo-600 mt-1">
                         Quantidade mínima: {p.qtd_atacado || 0}
+                      </div>
+                      <div className="mt-2 text-[11px] text-indigo-500">
+                        Quantidade em estoque
+                      </div>
+                      <div className="font-bold text-slate-800">
+                        {Number(p.estoque || 0).toLocaleString("pt-BR")}
                       </div>
                     </div>
 
