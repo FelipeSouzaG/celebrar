@@ -1596,7 +1596,7 @@ export function VendaDiretaTab() {
                   key={p.id}
                   className="border border-slate-200 rounded-xl bg-white shadow-sm p-3 overflow-x-auto"
                 >
-                  <div className="min-w-[920px] grid grid-cols-[180px_1.9fr_1.6fr_200px] gap-3 items-stretch">
+                  <div className="min-w-[860px] grid grid-cols-[170px_1.45fr_1.75fr_170px] gap-3 items-stretch">
                     <div className="h-32 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center p-2">
                       {imagemUrl ? (
                         <img
@@ -1616,7 +1616,7 @@ export function VendaDiretaTab() {
                       <div className="mt-2 text-[11px] text-slate-500">
                         Código de barras
                       </div>
-                      <div className="font-mono text-sm text-slate-700">
+                      <div className="font-mono text-xs text-slate-700">
                         {p.codigo_barras || "-"}
                       </div>
                       <div className="mt-2 text-[11px] text-slate-500">
