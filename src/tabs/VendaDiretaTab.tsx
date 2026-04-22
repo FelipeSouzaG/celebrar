@@ -1357,12 +1357,12 @@ export function VendaDiretaTab() {
                   key={p.id}
                   className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden"
                 >
-                  <div className="h-44 bg-slate-100 flex items-center justify-center">
+                  <div className="h-44 bg-slate-100 flex items-center justify-center p-3">
                     {imagemUrl ? (
                       <img
                         src={imagemUrl}
                         alt={p.nome}
-                        className="w-full h-full object-cover"
+                        className="max-h-full max-w-full object-contain"
                       />
                     ) : (
                       <span className="text-xs text-slate-400">Sem imagem</span>
