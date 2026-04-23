@@ -235,6 +235,13 @@ export function VendasTab() {
       const emitBlock = getXmlTagBlock(xml, "emit");
       const enderEmitBlock = getXmlTagBlock(emitBlock, "enderEmit");
       const icmsTotBlock = getXmlTagBlock(xml, "ICMSTot");
+      const detBlocks = xml
+        ? Array.from(
+            xml.matchAll(
+              /<(?:\w+:)?det(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?det>/gi,
+            ),
+          ).map((m) => String(m[1] || ""))
+        : [];
       const qrCodeUrl = getXmlTagValue(xml, "qrCode");
       const consultaUrl = getXmlTagValue(xml, "urlChave");
       const protocolo = fiscal.protocolo || getXmlTagValue(xml, "nProt") || "-";
@@ -273,6 +280,18 @@ export function VendasTab() {
       };
 
       const totalTributos = toNumber(getXmlTagValue(icmsTotBlock, "vTotTrib") || 0);
+      const csosnCodes = detBlocks
+        .map((det) => getXmlTagValue(getXmlTagBlock(det, "ICMS"), "CSOSN"))
+        .map((v) => String(v || "").replace(/\D/g, ""))
+        .filter(Boolean);
+      const forceIcmsZero =
+        csosnCodes.length > 0 && csosnCodes.every((code) => code === "102");
+      const baseIcms = forceIcmsZero
+        ? 0
+        : toNumber(getXmlTagValue(icmsTotBlock, "vBC") || 0);
+      const valorIcms = forceIcmsZero
+        ? 0
+        : toNumber(getXmlTagValue(icmsTotBlock, "vICMS") || 0);
       const paymentLabel =
         venda.contaBancaria?.nome || venda.tipo_pagamento || "Dinheiro";
       const totalValue = toNumber(venda.total || getXmlTagValue(icmsTotBlock, "vNF"));
@@ -355,6 +374,8 @@ export function VendasTab() {
     <p class="small"><strong>Total pago:</strong> ${totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
     <div class="sep"></div>
     <p class="small"><strong>Total de tributos:</strong> ${totalTributos.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+    <p class="small"><strong>Base ICMS:</strong> ${baseIcms.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+    <p class="small"><strong>Valor ICMS:</strong> ${valorIcms.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
     <div class="sep"></div>
     <p class="small"><strong>Protocolo:</strong> ${escapeHtml(protocolo)}</p>
     <p class="small"><strong>Chave:</strong><br/>${escapeHtml(chave)}</p>
