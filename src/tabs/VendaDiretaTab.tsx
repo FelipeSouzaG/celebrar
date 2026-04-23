@@ -238,9 +238,20 @@ export function VendaDiretaTab() {
   const mapNfeTpagLabel = (code?: string) => {
     const normalized = String(code || "").trim();
     if (normalized === "01") return "Dinheiro";
+    if (normalized === "02") return "Cheque";
     if (normalized === "03") return "Cartão de Crédito";
     if (normalized === "04") return "Cartão de Débito";
+    if (normalized === "05") return "Crédito Loja";
+    if (normalized === "10") return "Vale Alimentação";
+    if (normalized === "11") return "Vale Refeição";
+    if (normalized === "12") return "Vale Presente";
+    if (normalized === "13") return "Vale Combustível";
+    if (normalized === "15") return "Boleto Bancário";
+    if (normalized === "16") return "Depósito Bancário";
     if (normalized === "17") return "PIX";
+    if (normalized === "18") return "Transferência Bancária";
+    if (normalized === "19") return "Programa de Fidelidade";
+    if (normalized === "90") return "Sem pagamento";
     if (normalized === "99") return "Outros";
     return resolvePagamentoLabel(normalized || "-");
   };
@@ -266,17 +277,114 @@ export function VendaDiretaTab() {
     return d.toLocaleString("pt-BR");
   };
 
+  const formatDateOnly = (value?: string) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString("pt-BR");
+  };
+
+  const normalizeDigits = (value: any) => String(value || "").replace(/\D/g, "");
+
+  const formatCpfCnpj = (value: any) => {
+    const digits = normalizeDigits(value);
+    if (digits.length === 11) {
+      return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+    }
+    if (digits.length === 14) {
+      return digits.replace(
+        /(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,
+        "$1.$2.$3/$4-$5",
+      );
+    }
+    return String(value || "-");
+  };
+
+  const formatCep = (value: any) => {
+    const digits = normalizeDigits(value);
+    if (digits.length === 8) {
+      return digits.replace(/(\d{5})(\d{3})/, "$1-$2");
+    }
+    return String(value || "-");
+  };
+
+  const formatPhone = (value: any) => {
+    const digits = normalizeDigits(value);
+    if (digits.length === 11) {
+      return digits.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
+    }
+    if (digits.length === 10) {
+      return digits.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+    }
+    return String(value || "-");
+  };
+
+  const formatChaveAcesso = (value: any) => {
+    const digits = normalizeDigits(value);
+    if (!digits) return "-";
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+  };
+
+  const getModFreteLabel = (value?: string) => {
+    const code = String(value || "").trim();
+    if (code === "0") return "0 - Remetente (CIF)";
+    if (code === "1") return "1 - Destinatário (FOB)";
+    if (code === "2") return "2 - Terceiros";
+    if (code === "3") return "3 - Próprio remetente";
+    if (code === "4") return "4 - Próprio destinatário";
+    if (code === "9") return "9 - Sem frete";
+    return code ? `${code} - Não informado` : "-";
+  };
+
+  const buildBarcodeDataUri = (value: string) => {
+    const digits = normalizeDigits(value);
+    if (!digits) return "";
+    const map = [1, 2, 1, 3, 2, 1, 2, 3, 1, 2];
+    const bars: number[] = [2, 1, 2, 1];
+    for (const d of digits) {
+      const n = Number(d);
+      const w1 = map[n % map.length];
+      const w2 = map[(n + 3) % map.length];
+      bars.push(w1, 1, w2, 1);
+    }
+    bars.push(3, 1, 2, 1, 2);
+    const unit = 1.15;
+    const height = 52;
+    const totalWidth =
+      bars.reduce((acc, v) => acc + v, 0) * unit + 16;
+    let x = 8;
+    const rects: string[] = [];
+    for (let i = 0; i < bars.length; i += 1) {
+      const width = bars[i] * unit;
+      if (i % 2 === 0) {
+        rects.push(
+          `<rect x="${x.toFixed(2)}" y="0" width="${width.toFixed(2)}" height="${height}" fill="#000"/>`,
+        );
+      }
+      x += width;
+    }
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${totalWidth.toFixed(2)}' height='${height}' viewBox='0 0 ${totalWidth.toFixed(2)} ${height}'>${rects.join("")}</svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  };
+
   const buildNfeFromFiscalXml = (
     fiscal: VendaFiscalXmlResponse,
     venda: any,
   ): NfeResult => {
     const xml = fiscal?.xml || "";
+    const ideBlock = getXmlTagBlock(xml, "ide");
     const emitBlock = getXmlTagBlock(xml, "emit");
     const enderEmitBlock = getXmlTagBlock(emitBlock, "enderEmit");
     const destBlock = getXmlTagBlock(xml, "dest");
     const enderDestBlock = getXmlTagBlock(destBlock, "enderDest");
+    const transpBlock = getXmlTagBlock(xml, "transp");
+    const transportaBlock = getXmlTagBlock(transpBlock, "transporta");
+    const veicTranspBlock = getXmlTagBlock(transpBlock, "veicTransp");
+    const volBlocks = getXmlTagBlocks(transpBlock, "vol");
     const icmsTotBlock = getXmlTagBlock(xml, "ICMSTot");
+    const infAdicBlock = getXmlTagBlock(xml, "infAdic");
     const dhEmi = getXmlTagValue(xml, "dhEmi");
+    const dhSaiEnt = getXmlTagValue(xml, "dhSaiEnt");
     const naturezaOperacao = getXmlTagValue(xml, "natOp");
     const consultaUrl = getXmlTagValue(xml, "urlChave");
     const numero =
@@ -284,6 +392,8 @@ export function VendaDiretaTab() {
     const serie =
       Number(fiscal.serie || getXmlTagValue(xml, "serie") || 0) || 0;
     const detBlocks = getXmlTagBlocks(xml, "det");
+    const detPagBlocks = getXmlTagBlocks(xml, "detPag");
+    const dupBlocks = getXmlTagBlocks(xml, "dup");
     const itensXml = detBlocks.map((det) => {
       const prod = getXmlTagBlock(det, "prod");
       const imposto = getXmlTagBlock(det, "imposto");
@@ -317,6 +427,25 @@ export function VendaDiretaTab() {
       };
     });
 
+    const pagamentoDetalhes = detPagBlocks.map((detPag) => ({
+      tPag: getXmlTagValue(detPag, "tPag") || undefined,
+      vPag: getXmlTagValue(detPag, "vPag") || undefined,
+    }));
+    const pagamentoPrincipal: { tPag?: string; vPag?: string } =
+      pagamentoDetalhes[0] || {};
+    const pagamentoTotal = pagamentoDetalhes.reduce(
+      (acc, p) => acc + toNumber(p.vPag),
+      0,
+    );
+    const volumePrincipal = volBlocks[0] || "";
+    const volumesSomados = volBlocks.reduce(
+      (acc, vol) => acc + toNumber(getXmlTagValue(vol, "qVol")),
+      0,
+    );
+    const pedidoInterno =
+      getXmlTagValue(getXmlTagBlock(detBlocks[0] || "", "prod"), "xPed") ||
+      undefined;
+
     return {
       enabled: true,
       attempted: true,
@@ -324,9 +453,11 @@ export function VendaDiretaTab() {
       homologacao: getXmlTagValue(xml, "tpAmb") === "2",
       naturezaOperacao: naturezaOperacao || "VENDA DIRETA",
       dataEmissao: dhEmi || venda?.data_venda,
+      dataSaidaEntrada: dhSaiEnt || undefined,
       chaveAcesso: fiscal.chaveAcesso || getXmlTagValue(xml, "chNFe"),
       numero: numero || undefined,
       serie: serie || undefined,
+      tipoOperacao: getXmlTagValue(ideBlock, "tpNF") || undefined,
       protocolo: fiscal.protocolo || getXmlTagValue(xml, "nProt"),
       dataAutorizacao:
         fiscal.dataAutorizacao || getXmlTagValue(xml, "dhRecbto") || undefined,
@@ -335,7 +466,10 @@ export function VendaDiretaTab() {
       consultaUrl: consultaUrl || undefined,
       emitente: {
         nome: getXmlTagValue(emitBlock, "xNome") || undefined,
+        fantasia: getXmlTagValue(emitBlock, "xFant") || undefined,
         cnpj: getXmlTagValue(emitBlock, "CNPJ") || undefined,
+        cpf: getXmlTagValue(emitBlock, "CPF") || undefined,
+        crt: getXmlTagValue(emitBlock, "CRT") || undefined,
         ie: getXmlTagValue(emitBlock, "IE") || undefined,
         fone: getXmlTagValue(enderEmitBlock, "fone") || undefined,
         endereco: {
@@ -357,8 +491,13 @@ export function VendaDiretaTab() {
           getXmlTagValue(destBlock, "CNPJ") ||
           getXmlTagValue(destBlock, "CPF") ||
           undefined,
-        documentoTipo: getXmlTagValue(destBlock, "CNPJ") ? "CNPJ" : "CPF",
+        documentoTipo: getXmlTagValue(destBlock, "CNPJ")
+          ? "CNPJ"
+          : getXmlTagValue(destBlock, "CPF")
+            ? "CPF"
+            : undefined,
         ie: getXmlTagValue(destBlock, "IE") || undefined,
+        fone: getXmlTagValue(enderDestBlock, "fone") || undefined,
         endereco: {
           logradouro: getXmlTagValue(enderDestBlock, "xLgr") || undefined,
           numero: getXmlTagValue(enderDestBlock, "nro") || undefined,
@@ -372,18 +511,51 @@ export function VendaDiretaTab() {
       totais: {
         vBC: getXmlTagValue(icmsTotBlock, "vBC") || undefined,
         vICMS: getXmlTagValue(icmsTotBlock, "vICMS") || undefined,
+        vBCST: getXmlTagValue(icmsTotBlock, "vBCST") || undefined,
+        vST: getXmlTagValue(icmsTotBlock, "vST") || undefined,
         vProd: getXmlTagValue(icmsTotBlock, "vProd") || undefined,
         vFrete: getXmlTagValue(icmsTotBlock, "vFrete") || undefined,
+        vSeg: getXmlTagValue(icmsTotBlock, "vSeg") || undefined,
+        vDesc: getXmlTagValue(icmsTotBlock, "vDesc") || undefined,
         vOutro: getXmlTagValue(icmsTotBlock, "vOutro") || undefined,
+        vIPI: getXmlTagValue(icmsTotBlock, "vIPI") || undefined,
         vNF: getXmlTagValue(icmsTotBlock, "vNF") || undefined,
         vTotTrib: getXmlTagValue(icmsTotBlock, "vTotTrib") || undefined,
       },
       transporte: {
-        modFrete: getXmlTagValue(xml, "modFrete") || undefined,
+        modFrete: getXmlTagValue(transpBlock, "modFrete") || undefined,
+        transportadora: getXmlTagValue(transportaBlock, "xNome") || undefined,
+        documento:
+          getXmlTagValue(transportaBlock, "CNPJ") ||
+          getXmlTagValue(transportaBlock, "CPF") ||
+          undefined,
+        placa: getXmlTagValue(veicTranspBlock, "placa") || undefined,
+        ufPlaca: getXmlTagValue(veicTranspBlock, "UF") || undefined,
+        quantidadeVolumes:
+          (volumesSomados > 0 ? String(volumesSomados) : "") ||
+          getXmlTagValue(volumePrincipal, "qVol") ||
+          undefined,
+        pesoBruto: getXmlTagValue(volumePrincipal, "pesoB") || undefined,
+        pesoLiquido: getXmlTagValue(volumePrincipal, "pesoL") || undefined,
       },
       pagamento: {
-        tPag: getXmlTagValue(xml, "tPag") || undefined,
-        vPag: getXmlTagValue(xml, "vPag") || undefined,
+        tPag: pagamentoPrincipal.tPag || getXmlTagValue(xml, "tPag") || undefined,
+        vPag:
+          (pagamentoTotal > 0 ? String(pagamentoTotal) : "") ||
+          pagamentoPrincipal.vPag ||
+          getXmlTagValue(xml, "vPag") ||
+          undefined,
+        detalhes: pagamentoDetalhes,
+        parcelas: dupBlocks.map((dup) => ({
+          numero: getXmlTagValue(dup, "nDup") || undefined,
+          vencimento: getXmlTagValue(dup, "dVenc") || undefined,
+          valor: getXmlTagValue(dup, "vDup") || undefined,
+        })),
+      },
+      informacoesAdicionais: {
+        infCpl: getXmlTagValue(infAdicBlock, "infCpl") || undefined,
+        infAdFisco: getXmlTagValue(infAdicBlock, "infAdFisco") || undefined,
+        pedidoInterno: pedidoInterno,
       },
       itens: itensXml,
     };
@@ -418,79 +590,345 @@ export function VendaDiretaTab() {
 
     const emit = nfe.emitente || {};
     const emitEndereco = emit.endereco || {};
-    const empresaNome = emit.nome || "Celebrar Festas e Embalagens";
+    const cliente = venda?.cliente || {};
+    const dest = nfe.destinatario || {};
+    const destEndereco = dest.endereco || {};
+    const totais = nfe.totais || {};
+    const transporte = nfe.transporte || {};
+    const pagamento = nfe.pagamento || {};
+    const infos = nfe.informacoesAdicionais || {};
+    const chaveAcesso = normalizeDigits(nfe.chaveAcesso);
+
+    const empresaNome = emit.nome || "Emitente não informado";
+    const empresaFantasia = emit.fantasia || "-";
+    const empresaDocumento = formatCpfCnpj(emit.cnpj || emit.cpf || "-");
+    const empresaTelefone = formatPhone(emit.fone || "-");
     const empresaEndereco = [
       emitEndereco.logradouro || "-",
       emitEndereco.numero || "S/N",
       emitEndereco.complemento || "",
-      emitEndereco.bairro ? `- ${emitEndereco.bairro}` : "",
-      emitEndereco.cidade
-        ? `- ${emitEndereco.cidade}/${emitEndereco.uf || ""}`
-        : "",
-      emitEndereco.cep ? `- CEP ${emitEndereco.cep}` : "",
     ]
       .filter(Boolean)
-      .join(" ");
-    const empresaTelefone = emit.fone || "-";
+      .join(", ");
+    const empresaCidadeUf = [
+      emitEndereco.cidade || "-",
+      emitEndereco.uf || "",
+      formatCep(emitEndereco.cep || "-"),
+    ]
+      .filter(Boolean)
+      .join(" / ");
 
-    const cliente = venda?.cliente || {};
-    const dest = nfe.destinatario || {};
-    const destEndereco = dest.endereco || {};
     const documentoDest =
-      dest.documento || String(cliente?.documento || "").replace(/\D/g, "");
+      normalizeDigits(dest.documento) ||
+      normalizeDigits(cliente?.documento) ||
+      "-";
     const documentoDestTipo =
       dest.documentoTipo ||
-      (documentoDest.length === 14
+      (normalizeDigits(dest.documento).length === 14
         ? "CNPJ"
-        : documentoDest.length === 11
+        : normalizeDigits(dest.documento).length === 11
           ? "CPF"
           : "CPF/CNPJ");
     const enderecoDestLinha = [
-      venda?.endereco_rua || destEndereco.logradouro || cliente?.rua || "-",
-      venda?.endereco_numero || destEndereco.numero || cliente?.numero || "S/N",
-      venda?.endereco_complemento ||
-        destEndereco.complemento ||
+      destEndereco.logradouro || venda?.endereco_rua || cliente?.rua || "-",
+      destEndereco.numero || venda?.endereco_numero || cliente?.numero || "S/N",
+      destEndereco.complemento ||
+        venda?.endereco_complemento ||
         cliente?.complemento ||
         "",
     ]
       .filter(Boolean)
       .join(", ");
 
-    const valorProdutos = toNumber(nfe?.totais?.vProd);
-    const valorFrete = toNumber(nfe?.totais?.vFrete);
-    const valorOutros = toNumber(nfe?.totais?.vOutro);
-    const baseIcms = toNumber(nfe?.totais?.vBC);
-    const valorIcms = toNumber(nfe?.totais?.vICMS);
-    const valorTotalNota = toNumber(nfe?.totais?.vNF);
-    const valorTotTrib = toNumber(nfe?.totais?.vTotTrib);
+    const bairroDest =
+      destEndereco.bairro || venda?.endereco_bairro || cliente?.bairro || "-";
+    const cidadeDest =
+      destEndereco.cidade || venda?.endereco_cidade || cliente?.cidade || "-";
+    const ufDest = destEndereco.uf || venda?.endereco_estado || cliente?.estado || "-";
+    const cepDest = formatCep(destEndereco.cep || venda?.endereco_cep || cliente?.cep || "-");
+    const telefoneDest = formatPhone(dest.fone || cliente?.telefone || "-");
 
-    const itensRows = itens
-      .map((it: any) => {
-        const qtd = toNumber(it?.quantidade);
-        return `<tr>
+    const dataEmissao = formatDateTime(nfe.dataEmissao);
+    const dataSaidaEntrada = formatDateTime(nfe.dataSaidaEntrada);
+    const dataAutorizacao = formatDateTime(nfe.dataAutorizacao);
+    const protocoloAutorizacao = nfe.protocolo || "-";
+    const serieNota = nfe.serie ?? "-";
+    const numeroNota = nfe.numero ?? "-";
+    const naturezaOperacao = nfe.naturezaOperacao || "-";
+    const tipoOperacao =
+      String(nfe.tipoOperacao || "").trim() === "0"
+        ? "0 - Entrada"
+        : String(nfe.tipoOperacao || "").trim() === "1"
+          ? "1 - Saída"
+          : "-";
+    const ambiente = nfe.homologacao ? "Homologação" : "Produção";
+    const barcodeDataUri = buildBarcodeDataUri(chaveAcesso);
+
+    const valorBaseIcms = toNumber(totais.vBC);
+    const valorIcms = toNumber(totais.vICMS);
+    const valorBaseIcmsSt = toNumber(totais.vBCST);
+    const valorIcmsSt = toNumber(totais.vST);
+    const valorProdutos = toNumber(totais.vProd);
+    const valorFrete = toNumber(totais.vFrete);
+    const valorSeguro = toNumber(totais.vSeg);
+    const valorDesconto = toNumber(totais.vDesc);
+    const valorOutros = toNumber(totais.vOutro);
+    const valorIpi = toNumber(totais.vIPI);
+    const valorTotalNota = toNumber(totais.vNF);
+    const valorTotTrib = toNumber(totais.vTotTrib);
+
+    const pagamentoDetalhes = Array.isArray(pagamento.detalhes)
+      ? pagamento.detalhes
+      : [];
+    const parcelas = Array.isArray(pagamento.parcelas) ? pagamento.parcelas : [];
+
+    const pagamentoRows =
+      pagamentoDetalhes.length > 0
+        ? pagamentoDetalhes
+            .map(
+              (item) => `<tr>
+          <td>${escapeHtml(mapNfeTpagLabel(item.tPag))}</td>
+          <td class="right">${formatMoney(toNumber(item.vPag))}</td>
+        </tr>`,
+            )
+            .join("")
+        : `<tr>
+          <td>${escapeHtml(mapNfeTpagLabel(pagamento.tPag))}</td>
+          <td class="right">${formatMoney(toNumber(pagamento.vPag || valorTotalNota))}</td>
+        </tr>`;
+
+    const parcelasRows =
+      parcelas.length > 0
+        ? parcelas
+            .map(
+              (item) => `<tr>
+          <td>${escapeHtml(item.numero || "-")}</td>
+          <td class="center">${escapeHtml(formatDateOnly(item.vencimento))}</td>
+          <td class="right">${formatMoney(toNumber(item.valor))}</td>
+        </tr>`,
+            )
+            .join("")
+        : `<tr><td colspan="3" class="center">Sem parcelas no XML.</td></tr>`;
+
+    const itensPorPaginaPrimeira = 14;
+    const itensPorPaginaDemais = 22;
+    const paginasItens: any[][] = [];
+    if (itens.length <= itensPorPaginaPrimeira) {
+      paginasItens.push(itens);
+    } else {
+      paginasItens.push(itens.slice(0, itensPorPaginaPrimeira));
+      let cursor = itensPorPaginaPrimeira;
+      while (cursor < itens.length) {
+        paginasItens.push(itens.slice(cursor, cursor + itensPorPaginaDemais));
+        cursor += itensPorPaginaDemais;
+      }
+    }
+    if (paginasItens.length === 0) paginasItens.push([]);
+
+    const totalPaginas = paginasItens.length;
+
+    const buildItemRows = (rows: any[]) =>
+      rows
+        .map((it: any) => {
+          const qtd = toNumber(it?.quantidade);
+          return `<tr>
           <td>${escapeHtml(it?.codigo || "-")}</td>
-          <td>${escapeHtml(it?.descricao || "-")}</td>
+          <td class="wrap">${escapeHtml(it?.descricao || "-")}</td>
           <td>${escapeHtml(it?.ncm || "-")}</td>
-          <td>${escapeHtml(it?.cfop || "-")}</td>
           <td>${escapeHtml(it?.csosn || "-")}</td>
+          <td>${escapeHtml(it?.cfop || "-")}</td>
           <td class="center">${escapeHtml(it?.unidade || "UN")}</td>
           <td class="right">${qtd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</td>
           <td class="right">${formatMoney(toNumber(it?.valorUnitario))}</td>
           <td class="right">${formatMoney(toNumber(it?.valorTotal))}</td>
         </tr>`;
+        })
+        .join("");
+
+    const consultaUrl =
+      nfe.consultaUrl || "www.nfe.fazenda.gov.br/portal";
+
+    const pagesHtml = paginasItens
+      .map((paginaItens, pageIdx) => {
+        const numeroPagina = pageIdx + 1;
+        const isUltima = numeroPagina === totalPaginas;
+        return `<section class="page">
+        <div class="header-grid">
+          <div class="box company">
+            <img src="${logoLoja}" alt="Logo da empresa" class="logo" />
+            <div class="company-content">
+              <div class="company-name">${escapeHtml(empresaNome)}</div>
+              <div class="row"><b>Nome fantasia:</b> ${escapeHtml(empresaFantasia)}</div>
+              <div class="row"><b>Endereço:</b> ${escapeHtml(empresaEndereco)}</div>
+              <div class="row"><b>Cidade/UF/CEP:</b> ${escapeHtml(empresaCidadeUf)}</div>
+              <div class="row"><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
+              <div class="row"><b>CNPJ:</b> ${escapeHtml(empresaDocumento)}</div>
+              <div class="row"><b>Inscrição Estadual:</b> ${escapeHtml(emit.ie || "-")}</div>
+            </div>
+          </div>
+          <div class="box nfe-box">
+            <div class="danfe-title">DANFE</div>
+            <div class="sub-title">Documento Auxiliar da Nota Fiscal Eletrônica</div>
+            <div class="nfe-grid">
+              <div><b>Tipo operação</b><span>${escapeHtml(tipoOperacao)}</span></div>
+              <div><b>Número</b><span>${escapeHtml(String(numeroNota))}</span></div>
+              <div><b>Série</b><span>${escapeHtml(String(serieNota))}</span></div>
+              <div><b>Página</b><span>${escapeHtml(`${numeroPagina}/${totalPaginas}`)}</span></div>
+            </div>
+          </div>
+          <div class="box key-box">
+            <div class="row key-title"><b>Chave de acesso</b></div>
+            <div class="key-value">${escapeHtml(formatChaveAcesso(chaveAcesso || "-"))}</div>
+            ${
+              barcodeDataUri
+                ? `<div class="barcode-wrap"><img src="${barcodeDataUri}" alt="Código de barras da chave de acesso" class="barcode" /></div>`
+                : ""
+            }
+            <div class="consulta">
+              Consulta de autenticidade no portal nacional da NF-e<br/>
+              ${escapeHtml(consultaUrl)}
+            </div>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="section-title">Destinatário / Remetente</div>
+          <div class="grid dest-grid">
+            <div><b>Nome / Razão Social</b><span>${escapeHtml(dest.nome || cliente?.nome || "-")}</span></div>
+            <div><b>${escapeHtml(documentoDestTipo)}</b><span>${escapeHtml(formatCpfCnpj(documentoDest || "-"))}</span></div>
+            <div><b>Inscrição Estadual</b><span>${escapeHtml(dest.ie || "-")}</span></div>
+            <div><b>Data emissão</b><span>${escapeHtml(dataEmissao)}</span></div>
+            <div><b>Data saída/entrada</b><span>${escapeHtml(dataSaidaEntrada)}</span></div>
+            <div class="span3"><b>Endereço completo</b><span>${escapeHtml(enderecoDestLinha)}</span></div>
+            <div><b>Bairro</b><span>${escapeHtml(bairroDest)}</span></div>
+            <div><b>Cidade</b><span>${escapeHtml(cidadeDest)}</span></div>
+            <div><b>UF</b><span>${escapeHtml(ufDest)}</span></div>
+            <div><b>CEP</b><span>${escapeHtml(cepDest)}</span></div>
+            <div><b>Telefone</b><span>${escapeHtml(telefoneDest)}</span></div>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="section-title">Produtos / Itens</div>
+          <table class="items">
+            <thead>
+              <tr>
+                <th style="width: 10%;">Código</th>
+                <th style="width: 30%;">Descrição</th>
+                <th style="width: 8%;">NCM</th>
+                <th style="width: 8%;">CST/CSOSN</th>
+                <th style="width: 8%;">CFOP</th>
+                <th style="width: 6%;" class="center">UN</th>
+                <th style="width: 10%;" class="right">Quantidade</th>
+                <th style="width: 10%;" class="right">Valor Unitário</th>
+                <th style="width: 10%;" class="right">Valor Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                paginaItens.length > 0
+                  ? buildItemRows(paginaItens)
+                  : `<tr><td colspan="9" class="center">Sem itens no XML da NF-e.</td></tr>`
+              }
+            </tbody>
+          </table>
+        </div>
+
+        ${
+          isUltima
+            ? `<div class="box">
+          <div class="section-title">Cálculo do Imposto</div>
+          <div class="grid tax-grid">
+            <div><b>Base ICMS</b><span>${formatMoney(valorBaseIcms)}</span></div>
+            <div><b>Valor ICMS</b><span>${formatMoney(valorIcms)}</span></div>
+            <div><b>Base ICMS ST</b><span>${formatMoney(valorBaseIcmsSt)}</span></div>
+            <div><b>Valor ICMS ST</b><span>${formatMoney(valorIcmsSt)}</span></div>
+            <div><b>Valor Produtos</b><span>${formatMoney(valorProdutos)}</span></div>
+            <div><b>Frete</b><span>${formatMoney(valorFrete)}</span></div>
+            <div><b>Seguro</b><span>${formatMoney(valorSeguro)}</span></div>
+            <div><b>Desconto</b><span>${formatMoney(valorDesconto)}</span></div>
+            <div><b>Outras Despesas</b><span>${formatMoney(valorOutros)}</span></div>
+            <div><b>IPI</b><span>${formatMoney(valorIpi)}</span></div>
+            <div><b>Valor Total da Nota</b><span>${formatMoney(valorTotalNota)}</span></div>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="section-title">Transporte</div>
+          <div class="grid transport-grid">
+            <div><b>Modalidade frete</b><span>${escapeHtml(getModFreteLabel(transporte.modFrete))}</span></div>
+            <div><b>Transportadora</b><span>${escapeHtml(transporte.transportadora || "-")}</span></div>
+            <div><b>CNPJ/CPF</b><span>${escapeHtml(formatCpfCnpj(transporte.documento || "-"))}</span></div>
+            <div><b>Placa</b><span>${escapeHtml(transporte.placa || "-")}</span></div>
+            <div><b>UF placa</b><span>${escapeHtml(transporte.ufPlaca || "-")}</span></div>
+            <div><b>Quantidade volumes</b><span>${escapeHtml(transporte.quantidadeVolumes || "-")}</span></div>
+            <div><b>Peso bruto</b><span>${escapeHtml(transporte.pesoBruto || "-")}</span></div>
+            <div><b>Peso líquido</b><span>${escapeHtml(transporte.pesoLiquido || "-")}</span></div>
+          </div>
+        </div>
+
+        <div class="double-grid">
+          <div class="box">
+            <div class="section-title">Pagamento</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Forma de pagamento</th>
+                  <th class="right">Valor pago</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pagamentoRows}
+              </tbody>
+            </table>
+            <div class="box-inner-title">Parcelas</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th class="center">Vencimento</th>
+                  <th class="right">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${parcelasRows}
+              </tbody>
+            </table>
+          </div>
+          <div class="box">
+            <div class="section-title">Informações Adicionais</div>
+            <div class="info-list"><b>Empresa optante pelo Simples Nacional:</b> ${emit.crt === "1" ? "Sim" : "Não/Não informado"}</div>
+            <div class="info-list"><b>Tributos aproximados:</b> ${formatMoney(valorTotTrib)} (Fonte IBPT)</div>
+            <div class="info-list"><b>Pedido interno:</b> ${escapeHtml(infos.pedidoInterno || "-")}</div>
+            <div class="info-list"><b>Observações comerciais:</b> ${escapeHtml(infos.infCpl || "-")}</div>
+            <div class="info-list"><b>Dados bancários:</b> -</div>
+          </div>
+        </div>
+
+        <div class="box footer-box">
+          <div><b>Protocolo de autorização:</b> ${escapeHtml(protocoloAutorizacao)}</div>
+          <div><b>Data/hora autorização:</b> ${escapeHtml(dataAutorizacao)}</div>
+          <div><b>Ambiente:</b> ${escapeHtml(ambiente)}</div>
+          <div><b>Natureza da operação:</b> ${escapeHtml(naturezaOperacao)}</div>
+          <div><b>Informação fiscal complementar:</b> ${escapeHtml(infos.infAdFisco || "-")}</div>
+        </div>
+
+        <div class="canhoto">
+          <div><b>Canhoto de Recebimento</b></div>
+          <div class="canhoto-text">
+            Recebemos de ${escapeHtml(empresaNome)} os produtos constantes na NF-e nº <b>${escapeHtml(String(numeroNota))}</b> série <b>${escapeHtml(String(serieNota))}</b>.
+          </div>
+          <div class="signature">
+            <div>Data de recebimento</div>
+            <div>Nome legível</div>
+            <div>CPF/Documento</div>
+          </div>
+        </div>`
+            : ""
+        }
+      </section>`;
       })
       .join("");
-
-    const dataNota = formatDateTime(nfe?.dataAutorizacao || nfe?.dataEmissao);
-    const protocoloAutorizacao = nfe?.protocolo || "-";
-    const serieNota = nfe?.serie ?? "-";
-    const numeroNota = nfe?.numero ?? "-";
-    const naturezaOperacao = nfe?.naturezaOperacao || "VENDA DIRETA";
-    const freteLabel =
-      nfe?.transporte?.modFrete === "9"
-        ? "Sem frete"
-        : nfe?.transporte?.modFrete || "-";
-    const pagamentoLabel = mapNfeTpagLabel(nfe?.pagamento?.tPag);
 
     const html = `<!doctype html>
 <html lang="pt-BR">
@@ -498,136 +936,60 @@ export function VendaDiretaTab() {
     <meta charset="UTF-8" />
     <title>DANFE-NFe-${escapeHtml(String(numeroNota))}</title>
     <style>
-      @page { size: A4 portrait; margin: 10mm; }
+      @page { size: A4 portrait; margin: 8mm; }
+      * { box-sizing: border-box; }
       body { font-family: Arial, sans-serif; color: #111; margin: 0; font-size: 10px; }
-      .sheet { width: 100%; }
-      .box { border: 1px solid #000; margin-bottom: 6px; }
-      .header-grid { display: grid; grid-template-columns: 40% 23% 37%; gap: 6px; }
-      .company { display: flex; gap: 8px; padding: 6px; min-height: 110px; }
-      .logo { width: 72px; height: 72px; object-fit: contain; border: 1px solid #aaa; padding: 2px; }
-      .company h2 { margin: 0 0 4px; font-size: 12px; line-height: 1.2; }
-      .line { margin: 2px 0; line-height: 1.25; }
-      .nf-box, .access-box { padding: 6px; min-height: 110px; }
-      .nf-title { font-size: 16px; font-weight: 700; text-align: center; margin: 0 0 5px; }
-      .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; background: #efefef; padding: 3px 6px; border-bottom: 1px solid #000; }
-      .info-line { padding: 4px 6px; display: grid; gap: 6px; }
-      .line-4 { grid-template-columns: 2fr 1fr 1fr 1fr; }
-      .line-5 { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
-      .line-7 { grid-template-columns: 2fr 1fr 2fr 1fr 1.5fr 0.6fr 1fr; }
-      .field b { display: block; font-size: 9px; margin-bottom: 1px; text-transform: uppercase; }
-      table { width: 100%; border-collapse: collapse; font-size: 9px; }
-      th, td { border: 1px solid #000; padding: 3px; vertical-align: top; }
-      th { background: #efefef; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 8px; }
-      .center { text-align: center; }
+      .page { width: 100%; page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+      .box { border: 0.7px solid #000; margin-bottom: 4px; }
+      .box-inner-title { font-weight: 700; font-size: 10px; text-transform: uppercase; padding: 4px 6px; border-top: 0.7px solid #000; border-bottom: 0.7px solid #000; background: #f5f5f5; }
+      .header-grid { display: grid; grid-template-columns: 40% 24% 36%; gap: 4px; margin-bottom: 4px; }
+      .company { display: flex; gap: 8px; padding: 5px; min-height: 118px; }
+      .logo { width: 72px; height: 72px; object-fit: contain; border: 0.7px solid #999; padding: 2px; margin-top: 2px; }
+      .company-content { flex: 1; min-width: 0; }
+      .company-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; line-height: 1.2; }
+      .row { line-height: 1.25; margin-bottom: 1px; word-break: break-word; }
+      .nfe-box { padding: 5px; min-height: 118px; }
+      .danfe-title { font-size: 17px; font-weight: 700; text-align: center; line-height: 1; margin-top: 2px; }
+      .sub-title { text-align: center; font-size: 9px; margin-top: 2px; line-height: 1.2; }
+      .nfe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
+      .nfe-grid > div { border: 0.7px solid #000; padding: 3px; min-height: 28px; }
+      .nfe-grid b { display: block; font-size: 8px; text-transform: uppercase; }
+      .nfe-grid span { display: block; font-size: 11px; font-weight: 700; margin-top: 2px; }
+      .key-box { padding: 5px; min-height: 118px; }
+      .key-title { margin-bottom: 2px; }
+      .key-value { font-family: monospace; font-size: 10px; letter-spacing: 0.2px; word-break: break-all; }
+      .barcode-wrap { border: 0.7px solid #000; margin-top: 4px; padding: 2px 4px; }
+      .barcode { width: 100%; height: 40px; object-fit: fill; display: block; }
+      .consulta { margin-top: 4px; font-size: 8px; line-height: 1.2; }
+      .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; background: #f2f2f2; padding: 3px 6px; border-bottom: 0.7px solid #000; }
+      .grid { display: grid; gap: 0; }
+      .dest-grid { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
+      .dest-grid > div, .tax-grid > div, .transport-grid > div { border-right: 0.7px solid #000; border-bottom: 0.7px solid #000; padding: 3px 5px; min-height: 30px; }
+      .dest-grid > div:nth-child(5n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
+      .dest-grid > .span3 { grid-column: span 3; }
+      .tax-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .transport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .grid b { display: block; font-size: 8px; text-transform: uppercase; }
+      .grid span { display: block; margin-top: 2px; font-size: 10px; line-height: 1.2; word-break: break-word; }
+      table { width: 100%; border-collapse: collapse; font-size: 9px; table-layout: fixed; }
+      th, td { border: 0.7px solid #000; padding: 3px 4px; vertical-align: top; line-height: 1.2; }
+      th { background: #f2f2f2; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 8px; }
+      .items .wrap { white-space: normal; word-break: break-word; }
       .right { text-align: right; }
-      .muted { color: #333; font-size: 9px; line-height: 1.3; }
-      .canhoto { margin-top: 8px; border: 1px dashed #000; padding: 7px; font-size: 9px; }
-      .signature { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-      .signature div { border-top: 1px solid #000; padding-top: 3px; text-align: center; min-height: 18px; }
+      .center { text-align: center; }
+      .double-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+      .info-list { padding: 4px 6px; border-bottom: 0.7px solid #000; line-height: 1.3; word-break: break-word; }
+      .info-list:last-child { border-bottom: 0; }
+      .footer-box { padding: 6px; line-height: 1.3; font-size: 9px; }
+      .canhoto { border: 0.7px dashed #000; padding: 6px; font-size: 9px; }
+      .canhoto-text { margin-top: 4px; line-height: 1.3; }
+      .signature { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .signature div { border-top: 0.7px solid #000; padding-top: 3px; text-align: center; min-height: 16px; }
     </style>
   </head>
   <body>
-    <div class="sheet">
-      <div class="header-grid">
-        <div class="box company">
-          <img src="${logoLoja}" alt="Logo da loja" class="logo" />
-          <div>
-            <h2>${escapeHtml(empresaNome)}</h2>
-            <div class="line"><b>Endereço:</b> ${escapeHtml(empresaEndereco)}</div>
-            <div class="line"><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
-          </div>
-        </div>
-        <div class="box nf-box">
-          <div class="nf-title">DANFE</div>
-          <div class="center">Documento Auxiliar da Nota Fiscal Eletrônica</div>
-          <div class="center"><b>Saída</b></div>
-          <div class="center" style="margin-top: 8px;"><b>Número:</b> ${escapeHtml(numeroNota)}</div>
-          <div class="center"><b>Série:</b> ${escapeHtml(serieNota)}</div>
-        </div>
-        <div class="box access-box">
-          <div><b>Chave de Acesso</b></div>
-          <div style="word-break: break-all; margin: 4px 0 6px;">${escapeHtml(nfe.chaveAcesso || "-")}</div>
-          <div class="muted">Consulta de autenticidade no portal nacional da NF-e ou no site da Sefaz autorizadora.</div>
-          <div style="margin-top: 8px;"><b>Protocolo de autorização de uso</b></div>
-          <div>${escapeHtml(`${protocoloAutorizacao} - ${dataNota}`)}</div>
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="section-title">Dados Gerais</div>
-        <div class="info-line line-4">
-          <div class="field"><b>Natureza da Operação</b>${escapeHtml(naturezaOperacao)}</div>
-          <div class="field"><b>Inscrição Estadual</b>${escapeHtml(emit.ie || "-")}</div>
-          <div class="field"><b>CNPJ Emitente</b>${escapeHtml(emit.cnpj || "-")}</div>
-          <div class="field"><b>Data/Hora</b>${escapeHtml(dataNota)}</div>
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="section-title">Destinatário</div>
-        <div class="info-line line-7">
-          <div class="field"><b>Nome</b>${escapeHtml(dest.nome || cliente?.nome || "-")}</div>
-          <div class="field"><b>${escapeHtml(documentoDestTipo)}</b>${escapeHtml(documentoDest || "-")}</div>
-          <div class="field"><b>Endereço</b>${escapeHtml(enderecoDestLinha)}</div>
-          <div class="field"><b>Bairro</b>${escapeHtml(venda?.endereco_bairro || destEndereco.bairro || cliente?.bairro || "-")}</div>
-          <div class="field"><b>Cidade</b>${escapeHtml(venda?.endereco_cidade || destEndereco.cidade || cliente?.cidade || "-")}</div>
-          <div class="field"><b>UF</b>${escapeHtml(venda?.endereco_estado || destEndereco.uf || cliente?.estado || "-")}</div>
-          <div class="field"><b>CEP</b>${escapeHtml(venda?.endereco_cep || destEndereco.cep || cliente?.cep || "-")}</div>
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="section-title">Totais e Transporte</div>
-        <div class="info-line line-5">
-          <div class="field"><b>Base de Cálculo do ICMS</b>${formatMoney(baseIcms)}</div>
-          <div class="field"><b>Valor do ICMS</b>${formatMoney(valorIcms)}</div>
-          <div class="field"><b>Valor dos Produtos</b>${formatMoney(valorProdutos)}</div>
-          <div class="field"><b>Frete / Modalidade</b>${formatMoney(valorFrete)} (${escapeHtml(freteLabel)})</div>
-          <div class="field"><b>Outros / Total Tributos</b>${formatMoney(valorOutros)} / ${formatMoney(valorTotTrib)}</div>
-        </div>
-        <div class="info-line line-5" style="padding-top: 0;">
-          <div class="field"><b>Valor Total da NF-e</b>${formatMoney(valorTotalNota)}</div>
-          <div class="field"><b>Forma de Pagamento</b>${escapeHtml(pagamentoLabel)}</div>
-          <div class="field"><b>Valor Pago</b>${formatMoney(toNumber(nfe?.pagamento?.vPag || valorTotalNota))}</div>
-          <div class="field"><b>Protocolo</b>${escapeHtml(protocoloAutorizacao)}</div>
-          <div class="field"><b>Ambiente</b>${nfe.homologacao ? "Homologação" : "Produção"}</div>
-        </div>
-      </div>
-
-      <div class="box">
-        <div class="section-title">Dados dos Produtos / Serviços</div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 10%;">Código</th>
-              <th style="width: 27%;">Descrição</th>
-              <th style="width: 8%;">NCM</th>
-              <th style="width: 7%;">CFOP</th>
-              <th style="width: 8%;">CST/CSOSN</th>
-              <th style="width: 6%;" class="center">UN</th>
-              <th style="width: 10%;" class="right">Qtd</th>
-              <th style="width: 12%;" class="right">Vlr Unit.</th>
-              <th style="width: 12%;" class="right">Vlr Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itensRows || `<tr><td colspan="9" class="center">Sem itens na venda.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="canhoto">
-        <div><b>Canhoto de Recebimento</b></div>
-        <div style="margin-top: 4px;">
-          Recebemos de ${escapeHtml(empresaNome)} os produtos constantes na NF-e nº <b>${escapeHtml(numeroNota)}</b> série <b>${escapeHtml(serieNota)}</b>.
-        </div>
-        <div class="signature">
-          <div>Data de Recebimento</div>
-          <div>Nome Legível</div>
-          <div>CPF/Documento</div>
-        </div>
-      </div>
-    </div>
+    ${pagesHtml}
   </body>
 </html>`;
 
