@@ -353,9 +353,11 @@ export interface NfeResult {
   homologacao?: boolean;
   naturezaOperacao?: string;
   dataEmissao?: string;
+  dataSaidaEntrada?: string;
   chaveAcesso?: string;
   numero?: number;
   serie?: number;
+  tipoOperacao?: string;
   protocolo?: string;
   dataAutorizacao?: string;
   statusCode?: string;
@@ -363,7 +365,10 @@ export interface NfeResult {
   consultaUrl?: string;
   emitente?: {
     nome?: string;
+    fantasia?: string;
     cnpj?: string;
+    cpf?: string;
+    crt?: string;
     ie?: string;
     fone?: string;
     endereco?: {
@@ -381,6 +386,7 @@ export interface NfeResult {
     documento?: string;
     documentoTipo?: string;
     ie?: string;
+    fone?: string;
     endereco?: {
       logradouro?: string;
       numero?: string;
@@ -394,18 +400,44 @@ export interface NfeResult {
   totais?: {
     vBC?: string;
     vICMS?: string;
+    vBCST?: string;
+    vST?: string;
     vProd?: string;
     vFrete?: string;
+    vSeg?: string;
+    vDesc?: string;
     vOutro?: string;
+    vIPI?: string;
     vNF?: string;
     vTotTrib?: string;
   };
   transporte?: {
     modFrete?: string;
+    transportadora?: string;
+    documento?: string;
+    placa?: string;
+    ufPlaca?: string;
+    quantidadeVolumes?: string;
+    pesoBruto?: string;
+    pesoLiquido?: string;
   };
   pagamento?: {
     tPag?: string;
     vPag?: string;
+    detalhes?: Array<{
+      tPag?: string;
+      vPag?: string;
+    }>;
+    parcelas?: Array<{
+      numero?: string;
+      vencimento?: string;
+      valor?: string;
+    }>;
+  };
+  informacoesAdicionais?: {
+    infCpl?: string;
+    infAdFisco?: string;
+    pedidoInterno?: string;
   };
   itens?: Array<{
     codigo?: string;
