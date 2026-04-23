@@ -311,6 +311,16 @@ export interface VendaAdmin {
   data_venda: string;
   total: number;
   tipo_pagamento: string;
+  frete?: number;
+  freteModalidade?: string | null;
+  freteCpfCnpj?: string | null;
+  freteNomeRazaoSocial?: string | null;
+  fretePlaca?: string | null;
+  freteQtdVolumes?: number | null;
+  freteKmAproximado?: number | null;
+  pedidoInterno?: string | null;
+  observacoesComerciais?: string | null;
+  informacaoFiscalComplementar?: string | null;
   itens: ItemVenda[];
   notaFiscalModelo?: string | null;
   notaFiscalSequencial?: number | null;
