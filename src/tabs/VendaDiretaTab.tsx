@@ -236,7 +236,7 @@ export function VendaDiretaTab() {
       .trim();
 
   const mapNfeTpagLabel = (code?: string) => {
-    const normalized = String(code || "").trim();
+    const normalized = String(code || "").trim().toUpperCase();
     if (normalized === "01") return "Dinheiro";
     if (normalized === "02") return "Cheque";
     if (normalized === "03") return "Cartão de Crédito";
@@ -253,7 +253,74 @@ export function VendaDiretaTab() {
     if (normalized === "19") return "Programa de Fidelidade";
     if (normalized === "90") return "Sem pagamento";
     if (normalized === "99") return "Outros";
-    return resolvePagamentoLabel(normalized || "-");
+    if (normalized === "DINHEIRO") return "Dinheiro";
+    if (normalized === "PIX") return "PIX";
+    if (normalized === "CARTAO" || normalized === "CARTÃO") return "Cartão";
+    if (normalized === "CARTAO_CREDITO") return "Cartão de Crédito";
+    if (normalized === "CARTAO_DEBITO") return "Cartão de Débito";
+    if (normalized === "BOLETO") return "Boleto Bancário";
+    const fallback = resolvePagamentoLabel(normalized);
+    return fallback === "-" ? "Outros" : fallback;
+  };
+
+  const resolveNaturezaOperacao = (value: string, cfops: string[]) => {
+    const text = String(value || "").trim();
+    const normalized = text.toUpperCase();
+    const isGeneric =
+      !text ||
+      normalized === "VENDA DIRETA" ||
+      normalized === "VENDA" ||
+      normalized === "VENDA DE MERCADORIA";
+    if (!isGeneric) return text;
+
+    const byCfop: Record<string, string> = {
+      "5102": "Venda de mercadoria adquirida de terceiros",
+      "5405": "Venda de mercadoria sujeita à substituição tributária",
+      "6102": "Venda interestadual de mercadoria adquirida de terceiros",
+      "6405": "Venda interestadual sujeita à ST",
+    };
+    const firstCfopMapped = cfops
+      .map((v) => String(v || "").trim())
+      .find((cfop) => Boolean(byCfop[cfop]));
+    return firstCfopMapped ? byCfop[firstCfopMapped] : text || "Venda";
+  };
+
+  const isUuidLike = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+
+  const normalizeDanfeItemCode = (rawCode: any, index: number) => {
+    const code = String(rawCode || "").trim();
+    if (!code) return String(index + 1).padStart(3, "0");
+    if (isUuidLike(code)) return String(index + 1).padStart(3, "0");
+    return code.length > 24 ? code.slice(0, 24) : code;
+  };
+
+  const shouldForceIcmsZeroForCsosn102 = (itens: Array<{ csosn?: string }>) => {
+    if (!Array.isArray(itens) || itens.length === 0) return false;
+    const normalized = itens
+      .map((it) => String(it?.csosn || "").replace(/\D/g, ""))
+      .filter(Boolean);
+    if (normalized.length === 0) return false;
+    return normalized.every((csosn) => csosn === "102");
+  };
+
+  const resolvePrintableAssetUrl = (value: string) => {
+    const src = String(value || "").trim();
+    if (!src) return "";
+    if (
+      src.startsWith("data:") ||
+      src.startsWith("blob:") ||
+      /^https?:\/\//i.test(src)
+    ) {
+      return src;
+    }
+    try {
+      return new URL(src, window.location.origin).href;
+    } catch {
+      return src;
+    }
   };
 
   const toNumber = (value: any) => {
@@ -445,13 +512,15 @@ export function VendaDiretaTab() {
     const pedidoInterno =
       getXmlTagValue(getXmlTagBlock(detBlocks[0] || "", "prod"), "xPed") ||
       undefined;
+    const cfopsItens = itensXml.map((item) => String(item.cfop || "").trim());
+    const forceIcmsZero = shouldForceIcmsZeroForCsosn102(itensXml);
 
     return {
       enabled: true,
       attempted: true,
       authorized: String(fiscal.statusCode || "").trim() === "100",
       homologacao: getXmlTagValue(xml, "tpAmb") === "2",
-      naturezaOperacao: naturezaOperacao || "VENDA DIRETA",
+      naturezaOperacao: resolveNaturezaOperacao(naturezaOperacao, cfopsItens),
       dataEmissao: dhEmi || venda?.data_venda,
       dataSaidaEntrada: dhSaiEnt || undefined,
       chaveAcesso: fiscal.chaveAcesso || getXmlTagValue(xml, "chNFe"),
@@ -509,8 +578,12 @@ export function VendaDiretaTab() {
         },
       },
       totais: {
-        vBC: getXmlTagValue(icmsTotBlock, "vBC") || undefined,
-        vICMS: getXmlTagValue(icmsTotBlock, "vICMS") || undefined,
+        vBC: forceIcmsZero
+          ? "0.00"
+          : getXmlTagValue(icmsTotBlock, "vBC") || undefined,
+        vICMS: forceIcmsZero
+          ? "0.00"
+          : getXmlTagValue(icmsTotBlock, "vICMS") || undefined,
         vBCST: getXmlTagValue(icmsTotBlock, "vBCST") || undefined,
         vST: getXmlTagValue(icmsTotBlock, "vST") || undefined,
         vProd: getXmlTagValue(icmsTotBlock, "vProd") || undefined,
@@ -570,7 +643,7 @@ export function VendaDiretaTab() {
     const autoPrint = options?.autoPrint !== false;
     const itensXml = Array.isArray(nfe.itens) ? nfe.itens : [];
     const itensVenda = Array.isArray(venda?.itens) ? venda.itens : [];
-    const itens =
+    const itensBase =
       itensXml.length > 0
         ? itensXml
         : itensVenda.map((it: any, idx: number) => ({
@@ -587,6 +660,10 @@ export function VendaDiretaTab() {
               Number(it?.qtd || 0) * Number(it?.preco_un_aplicado || 0),
             ),
           }));
+    const itens = itensBase.map((it, idx) => ({
+      ...it,
+      codigo: normalizeDanfeItemCode(it?.codigo, idx),
+    }));
 
     const emit = nfe.emitente || {};
     const emitEndereco = emit.endereco || {};
@@ -598,6 +675,7 @@ export function VendaDiretaTab() {
     const pagamento = nfe.pagamento || {};
     const infos = nfe.informacoesAdicionais || {};
     const chaveAcesso = normalizeDigits(nfe.chaveAcesso);
+    const logoSrc = resolvePrintableAssetUrl(logoLoja);
 
     const empresaNome = emit.nome || "Emitente não informado";
     const empresaFantasia = emit.fantasia || "-";
@@ -607,6 +685,7 @@ export function VendaDiretaTab() {
       emitEndereco.logradouro || "-",
       emitEndereco.numero || "S/N",
       emitEndereco.complemento || "",
+      emitEndereco.bairro || "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -644,8 +723,11 @@ export function VendaDiretaTab() {
       destEndereco.bairro || venda?.endereco_bairro || cliente?.bairro || "-";
     const cidadeDest =
       destEndereco.cidade || venda?.endereco_cidade || cliente?.cidade || "-";
-    const ufDest = destEndereco.uf || venda?.endereco_estado || cliente?.estado || "-";
-    const cepDest = formatCep(destEndereco.cep || venda?.endereco_cep || cliente?.cep || "-");
+    const ufDest =
+      destEndereco.uf || venda?.endereco_estado || cliente?.estado || "-";
+    const cepDest = formatCep(
+      destEndereco.cep || venda?.endereco_cep || cliente?.cep || "-",
+    );
     const telefoneDest = formatPhone(dest.fone || cliente?.telefone || "-");
 
     const dataEmissao = formatDateTime(nfe.dataEmissao);
@@ -654,7 +736,10 @@ export function VendaDiretaTab() {
     const protocoloAutorizacao = nfe.protocolo || "-";
     const serieNota = nfe.serie ?? "-";
     const numeroNota = nfe.numero ?? "-";
-    const naturezaOperacao = nfe.naturezaOperacao || "-";
+    const naturezaOperacao = resolveNaturezaOperacao(
+      String(nfe.naturezaOperacao || ""),
+      itens.map((it: any) => String(it?.cfop || "").trim()),
+    );
     const tipoOperacao =
       String(nfe.tipoOperacao || "").trim() === "0"
         ? "0 - Entrada"
@@ -664,8 +749,9 @@ export function VendaDiretaTab() {
     const ambiente = nfe.homologacao ? "Homologação" : "Produção";
     const barcodeDataUri = buildBarcodeDataUri(chaveAcesso);
 
-    const valorBaseIcms = toNumber(totais.vBC);
-    const valorIcms = toNumber(totais.vICMS);
+    const forceIcmsZero = shouldForceIcmsZeroForCsosn102(itens);
+    const valorBaseIcms = forceIcmsZero ? 0 : toNumber(totais.vBC);
+    const valorIcms = forceIcmsZero ? 0 : toNumber(totais.vICMS);
     const valorBaseIcmsSt = toNumber(totais.vBCST);
     const valorIcmsSt = toNumber(totais.vST);
     const valorProdutos = toNumber(totais.vProd);
@@ -693,7 +779,7 @@ export function VendaDiretaTab() {
             )
             .join("")
         : `<tr>
-          <td>${escapeHtml(mapNfeTpagLabel(pagamento.tPag))}</td>
+          <td>${escapeHtml(mapNfeTpagLabel(pagamento.tPag || venda?.tipo_pagamento || ""))}</td>
           <td class="right">${formatMoney(toNumber(pagamento.vPag || valorTotalNota))}</td>
         </tr>`;
 
@@ -745,49 +831,55 @@ export function VendaDiretaTab() {
         })
         .join("");
 
-    const consultaUrl =
-      nfe.consultaUrl || "www.nfe.fazenda.gov.br/portal";
+    const consultaUrl = "www.nfe.fazenda.gov.br/portal";
+    const logoContent = logoSrc
+      ? `<img src="${escapeHtml(logoSrc)}" alt="Logotipo do emitente" class="logo" />`
+      : `<div class="logo-fallback">SEM LOGO</div>`;
 
     const pagesHtml = paginasItens
       .map((paginaItens, pageIdx) => {
         const numeroPagina = pageIdx + 1;
         const isUltima = numeroPagina === totalPaginas;
         return `<section class="page">
-        <div class="header-grid">
-          <div class="box company">
-            <img src="${logoLoja}" alt="Logo da empresa" class="logo" />
-            <div class="company-content">
-              <div class="company-name">${escapeHtml(empresaNome)}</div>
-              <div class="row"><b>Nome fantasia:</b> ${escapeHtml(empresaFantasia)}</div>
-              <div class="row"><b>Endereço:</b> ${escapeHtml(empresaEndereco)}</div>
-              <div class="row"><b>Cidade/UF/CEP:</b> ${escapeHtml(empresaCidadeUf)}</div>
-              <div class="row"><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
-              <div class="row"><b>CNPJ:</b> ${escapeHtml(empresaDocumento)}</div>
-              <div class="row"><b>Inscrição Estadual:</b> ${escapeHtml(emit.ie || "-")}</div>
-            </div>
+        <div class="top-grid">
+          <div class="box logo-box">
+            ${logoContent}
           </div>
-          <div class="box nfe-box">
+          <div class="box danfe-box">
             <div class="danfe-title">DANFE</div>
             <div class="sub-title">Documento Auxiliar da Nota Fiscal Eletrônica</div>
-            <div class="nfe-grid">
-              <div><b>Tipo operação</b><span>${escapeHtml(tipoOperacao)}</span></div>
-              <div><b>Número</b><span>${escapeHtml(String(numeroNota))}</span></div>
+            <div class="danfe-meta">
+              <div><b>Entrada / Saída</b><span>${escapeHtml(tipoOperacao)}</span></div>
+              <div><b>Número NF-e</b><span>${escapeHtml(String(numeroNota))}</span></div>
               <div><b>Série</b><span>${escapeHtml(String(serieNota))}</span></div>
               <div><b>Página</b><span>${escapeHtml(`${numeroPagina}/${totalPaginas}`)}</span></div>
             </div>
-          </div>
-          <div class="box key-box">
-            <div class="row key-title"><b>Chave de acesso</b></div>
-            <div class="key-value">${escapeHtml(formatChaveAcesso(chaveAcesso || "-"))}</div>
-            ${
-              barcodeDataUri
-                ? `<div class="barcode-wrap"><img src="${barcodeDataUri}" alt="Código de barras da chave de acesso" class="barcode" /></div>`
-                : ""
-            }
-            <div class="consulta">
-              Consulta de autenticidade no portal nacional da NF-e<br/>
-              ${escapeHtml(consultaUrl)}
+            <div class="key-area">
+              <div class="key-title">Chave de Acesso</div>
+              <div class="key-value">${escapeHtml(formatChaveAcesso(chaveAcesso || "-"))}</div>
+              ${
+                barcodeDataUri
+                  ? `<div class="barcode-wrap"><img src="${barcodeDataUri}" alt="Código de barras da chave de acesso" class="barcode" /></div>`
+                  : ""
+              }
+              <div class="consulta">
+                Consulta de autenticidade: <a href="http://${consultaUrl}" target="_blank" rel="noreferrer">${consultaUrl}</a>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="section-title">Emitente</div>
+          <div class="grid emit-grid">
+            <div><b>Razão Social</b><span>${escapeHtml(empresaNome)}</span></div>
+            <div><b>Nome Fantasia</b><span>${escapeHtml(empresaFantasia)}</span></div>
+            <div><b>Endereço Completo</b><span>${escapeHtml(empresaEndereco)}</span></div>
+            <div><b>Cidade / UF / CEP</b><span>${escapeHtml(empresaCidadeUf)}</span></div>
+            <div><b>Telefone</b><span>${escapeHtml(empresaTelefone)}</span></div>
+            <div><b>CNPJ</b><span>${escapeHtml(empresaDocumento)}</span></div>
+            <div><b>Inscrição Estadual</b><span>${escapeHtml(emit.ie || "-")}</span></div>
+            <div><b>Natureza da Operação</b><span>${escapeHtml(naturezaOperacao)}</span></div>
           </div>
         </div>
 
@@ -797,9 +889,9 @@ export function VendaDiretaTab() {
             <div><b>Nome / Razão Social</b><span>${escapeHtml(dest.nome || cliente?.nome || "-")}</span></div>
             <div><b>${escapeHtml(documentoDestTipo)}</b><span>${escapeHtml(formatCpfCnpj(documentoDest || "-"))}</span></div>
             <div><b>Inscrição Estadual</b><span>${escapeHtml(dest.ie || "-")}</span></div>
-            <div><b>Data emissão</b><span>${escapeHtml(dataEmissao)}</span></div>
-            <div><b>Data saída/entrada</b><span>${escapeHtml(dataSaidaEntrada)}</span></div>
-            <div class="span3"><b>Endereço completo</b><span>${escapeHtml(enderecoDestLinha)}</span></div>
+            <div><b>Data Emissão</b><span>${escapeHtml(dataEmissao)}</span></div>
+            <div><b>Data Saída/Entrada</b><span>${escapeHtml(dataSaidaEntrada)}</span></div>
+            <div class="span3"><b>Endereço Completo</b><span>${escapeHtml(enderecoDestLinha)}</span></div>
             <div><b>Bairro</b><span>${escapeHtml(bairroDest)}</span></div>
             <div><b>Cidade</b><span>${escapeHtml(cidadeDest)}</span></div>
             <div><b>UF</b><span>${escapeHtml(ufDest)}</span></div>
@@ -813,15 +905,15 @@ export function VendaDiretaTab() {
           <table class="items">
             <thead>
               <tr>
-                <th style="width: 10%;">Código</th>
-                <th style="width: 30%;">Descrição</th>
-                <th style="width: 8%;">NCM</th>
-                <th style="width: 8%;">CST/CSOSN</th>
+                <th style="width: 9%;">Código</th>
+                <th style="width: 33%;">Descrição</th>
+                <th style="width: 9%;">NCM</th>
+                <th style="width: 8%;">CSOSN</th>
                 <th style="width: 8%;">CFOP</th>
                 <th style="width: 6%;" class="center">UN</th>
-                <th style="width: 10%;" class="right">Quantidade</th>
-                <th style="width: 10%;" class="right">Valor Unitário</th>
-                <th style="width: 10%;" class="right">Valor Total</th>
+                <th style="width: 10%;" class="right">Qtde</th>
+                <th style="width: 9%;" class="right">Valor Unitário</th>
+                <th style="width: 8%;" class="right">Valor Total</th>
               </tr>
             </thead>
             <tbody>
@@ -897,11 +989,11 @@ export function VendaDiretaTab() {
           </div>
           <div class="box">
             <div class="section-title">Informações Adicionais</div>
-            <div class="info-list"><b>Empresa optante pelo Simples Nacional:</b> ${emit.crt === "1" ? "Sim" : "Não/Não informado"}</div>
+            <div class="info-list"><b>Empresa optante pelo Simples Nacional:</b> ${emit.crt === "1" ? "SIM" : "NÃO"}</div>
             <div class="info-list"><b>Tributos aproximados:</b> ${formatMoney(valorTotTrib)} (Fonte IBPT)</div>
             <div class="info-list"><b>Pedido interno:</b> ${escapeHtml(infos.pedidoInterno || "-")}</div>
             <div class="info-list"><b>Observações comerciais:</b> ${escapeHtml(infos.infCpl || "-")}</div>
-            <div class="info-list"><b>Dados bancários:</b> -</div>
+            <div class="info-list"><b>Informação fiscal complementar:</b> ${escapeHtml(infos.infAdFisco || "-")}</div>
           </div>
         </div>
 
@@ -909,8 +1001,6 @@ export function VendaDiretaTab() {
           <div><b>Protocolo de autorização:</b> ${escapeHtml(protocoloAutorizacao)}</div>
           <div><b>Data/hora autorização:</b> ${escapeHtml(dataAutorizacao)}</div>
           <div><b>Ambiente:</b> ${escapeHtml(ambiente)}</div>
-          <div><b>Natureza da operação:</b> ${escapeHtml(naturezaOperacao)}</div>
-          <div><b>Informação fiscal complementar:</b> ${escapeHtml(infos.infAdFisco || "-")}</div>
         </div>
 
         <div class="canhoto">
@@ -938,54 +1028,54 @@ export function VendaDiretaTab() {
     <style>
       @page { size: A4 portrait; margin: 8mm; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; color: #111; margin: 0; font-size: 10px; }
+      body { font-family: "Segoe UI", Arial, sans-serif; color: #111827; margin: 0; font-size: 10px; }
       .page { width: 100%; page-break-after: always; }
       .page:last-child { page-break-after: auto; }
-      .box { border: 0.7px solid #000; margin-bottom: 4px; }
-      .box-inner-title { font-weight: 700; font-size: 10px; text-transform: uppercase; padding: 4px 6px; border-top: 0.7px solid #000; border-bottom: 0.7px solid #000; background: #f5f5f5; }
-      .header-grid { display: grid; grid-template-columns: 40% 24% 36%; gap: 4px; margin-bottom: 4px; }
-      .company { display: flex; gap: 8px; padding: 5px; min-height: 118px; }
-      .logo { width: 72px; height: 72px; object-fit: contain; border: 0.7px solid #999; padding: 2px; margin-top: 2px; }
-      .company-content { flex: 1; min-width: 0; }
-      .company-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; line-height: 1.2; }
-      .row { line-height: 1.25; margin-bottom: 1px; word-break: break-word; }
-      .nfe-box { padding: 5px; min-height: 118px; }
-      .danfe-title { font-size: 17px; font-weight: 700; text-align: center; line-height: 1; margin-top: 2px; }
+      .box { border: 0.6px solid #111827; margin-bottom: 4px; border-radius: 2px; overflow: hidden; }
+      .box-inner-title { font-weight: 700; font-size: 9px; text-transform: uppercase; padding: 4px 6px; border-top: 0.6px solid #111827; border-bottom: 0.6px solid #111827; background: #f8fafc; }
+      .top-grid { display: grid; grid-template-columns: 24% 76%; gap: 4px; margin-bottom: 4px; }
+      .logo-box { min-height: 130px; display: flex; align-items: center; justify-content: center; padding: 8px; }
+      .logo { max-width: 100%; max-height: 90px; width: auto; height: auto; object-fit: contain; }
+      .logo-fallback { width: 100%; min-height: 84px; border: 0.6px dashed #9ca3af; background: #f9fafb; color: #6b7280; font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; text-align: center; }
+      .danfe-box { padding: 6px; }
+      .danfe-title { font-size: 18px; font-weight: 800; text-align: center; line-height: 1; letter-spacing: 0.4px; }
       .sub-title { text-align: center; font-size: 9px; margin-top: 2px; line-height: 1.2; }
-      .nfe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 8px; }
-      .nfe-grid > div { border: 0.7px solid #000; padding: 3px; min-height: 28px; }
-      .nfe-grid b { display: block; font-size: 8px; text-transform: uppercase; }
-      .nfe-grid span { display: block; font-size: 11px; font-weight: 700; margin-top: 2px; }
-      .key-box { padding: 5px; min-height: 118px; }
-      .key-title { margin-bottom: 2px; }
-      .key-value { font-family: monospace; font-size: 10px; letter-spacing: 0.2px; word-break: break-all; }
-      .barcode-wrap { border: 0.7px solid #000; margin-top: 4px; padding: 2px 4px; }
-      .barcode { width: 100%; height: 40px; object-fit: fill; display: block; }
-      .consulta { margin-top: 4px; font-size: 8px; line-height: 1.2; }
-      .section-title { font-size: 10px; font-weight: 700; text-transform: uppercase; background: #f2f2f2; padding: 3px 6px; border-bottom: 0.7px solid #000; }
+      .danfe-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+      .danfe-meta > div { border: 0.6px solid #111827; padding: 3px 4px; min-height: 28px; }
+      .danfe-meta b { display: block; font-size: 8px; text-transform: uppercase; color: #334155; }
+      .danfe-meta span { display: block; font-size: 10px; font-weight: 700; margin-top: 2px; }
+      .key-area { margin-top: 5px; border: 0.6px solid #111827; padding: 4px; }
+      .key-title { font-size: 8px; text-transform: uppercase; font-weight: 700; color: #334155; }
+      .key-value { font-family: "Courier New", monospace; font-size: 10px; letter-spacing: 0.3px; word-break: break-all; margin-top: 2px; }
+      .barcode-wrap { margin-top: 4px; padding: 2px 3px; border: 0.6px solid #111827; }
+      .barcode { width: 100%; height: 42px; object-fit: fill; display: block; }
+      .consulta { margin-top: 4px; font-size: 8px; line-height: 1.2; color: #334155; }
+      .consulta a { color: #0f172a; text-decoration: none; }
+      .section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-bottom: 0.6px solid #111827; letter-spacing: 0.2px; }
       .grid { display: grid; gap: 0; }
+      .emit-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .dest-grid { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
-      .dest-grid > div, .tax-grid > div, .transport-grid > div { border-right: 0.7px solid #000; border-bottom: 0.7px solid #000; padding: 3px 5px; min-height: 30px; }
-      .dest-grid > div:nth-child(5n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
+      .emit-grid > div, .dest-grid > div, .tax-grid > div, .transport-grid > div { border-right: 0.6px solid #111827; border-bottom: 0.6px solid #111827; padding: 3px 5px; min-height: 30px; }
+      .emit-grid > div:nth-child(4n), .dest-grid > div:nth-child(5n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
       .dest-grid > .span3 { grid-column: span 3; }
       .tax-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .transport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .grid b { display: block; font-size: 8px; text-transform: uppercase; }
+      .grid b { display: block; font-size: 8px; text-transform: uppercase; color: #334155; }
       .grid span { display: block; margin-top: 2px; font-size: 10px; line-height: 1.2; word-break: break-word; }
       table { width: 100%; border-collapse: collapse; font-size: 9px; table-layout: fixed; }
-      th, td { border: 0.7px solid #000; padding: 3px 4px; vertical-align: top; line-height: 1.2; }
-      th { background: #f2f2f2; text-align: left; font-weight: 700; text-transform: uppercase; font-size: 8px; }
+      th, td { border: 0.6px solid #111827; padding: 3px 4px; vertical-align: top; line-height: 1.25; }
+      th { background: #f8fafc; text-align: left; font-weight: 800; text-transform: uppercase; font-size: 8px; color: #334155; }
       .items .wrap { white-space: normal; word-break: break-word; }
       .right { text-align: right; }
       .center { text-align: center; }
       .double-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
-      .info-list { padding: 4px 6px; border-bottom: 0.7px solid #000; line-height: 1.3; word-break: break-word; }
+      .info-list { padding: 4px 6px; border-bottom: 0.6px solid #111827; line-height: 1.3; word-break: break-word; }
       .info-list:last-child { border-bottom: 0; }
-      .footer-box { padding: 6px; line-height: 1.3; font-size: 9px; }
-      .canhoto { border: 0.7px dashed #000; padding: 6px; font-size: 9px; }
+      .footer-box { padding: 6px; line-height: 1.35; font-size: 9px; }
+      .canhoto { border: 0.6px dashed #111827; padding: 6px; font-size: 9px; }
       .canhoto-text { margin-top: 4px; line-height: 1.3; }
       .signature { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-      .signature div { border-top: 0.7px solid #000; padding-top: 3px; text-align: center; min-height: 16px; }
+      .signature div { border-top: 0.6px solid #111827; padding-top: 3px; text-align: center; min-height: 16px; }
     </style>
   </head>
   <body>
@@ -1019,13 +1109,13 @@ export function VendaDiretaTab() {
         setTimeout(() => {
           if (document.body.contains(frame)) document.body.removeChild(frame);
         }, 500);
-      }, 200);
+      }, 220);
       return;
     }
 
     setTimeout(() => {
       win.focus();
-    }, 200);
+    }, 220);
   };
 
   const buildAuthorizedNfeFromVenda = async (venda: any) => {
