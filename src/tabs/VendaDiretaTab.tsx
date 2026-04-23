@@ -732,10 +732,14 @@ export function VendaDiretaTab() {
     };
     const itens = itensBase.map((it, idx) => {
       const vendaItem = itensVenda[idx] || {};
+      const produtoCadastro =
+        vendaItem?.produto ||
+        produtos.find((p) => p.id === vendaItem?.produtoId) ||
+        null;
       const codigoFallback =
-        vendaItem?.produto?.codigo_barras || vendaItem?.codigo_barras || "";
+        produtoCadastro?.codigo_barras || vendaItem?.codigo_barras || "";
       const descricaoFallback =
-        vendaItem?.produto?.nome || vendaItem?.produtoNome || "";
+        produtoCadastro?.nome || vendaItem?.produtoNome || "";
       const codigoResolvido =
         isGenericDanfeItemCode(it?.codigo, idx)
           ? codigoFallback || it?.codigo
@@ -765,7 +769,7 @@ export function VendaDiretaTab() {
     const empresaNome = emit.nome || "Emitente não informado";
     const empresaDocumento = formatCpfCnpj(emit.cnpj || emit.cpf || "-");
     const empresaTelefone = formatPhone(emit.fone || "-");
-    const empresaSite = "www.celebrarfestasembalegens.com.br";
+    const empresaSite = "www.celebrarfestasembalagens.com.br";
     const empresaEndereco = [
       emitEndereco.logradouro || "-",
       emitEndereco.numero || "S/N",
@@ -922,8 +926,8 @@ export function VendaDiretaTab() {
           <div class="box logo-box">
             ${logoContent}
             <div class="logo-contact">
-              <div><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
-              <div><b>Site:</b> ${escapeHtml(empresaSite)}</div>
+              <div>${escapeHtml(empresaTelefone)}</div>
+              <div>${escapeHtml(empresaSite)}</div>
             </div>
           </div>
           <div class="box danfe-box">
@@ -1115,13 +1119,14 @@ export function VendaDiretaTab() {
       body { font-family: "Segoe UI", Arial, sans-serif; color: #111827; margin: 0; font-size: 10px; }
       .page { width: 100%; page-break-after: always; }
       .page:last-child { page-break-after: auto; }
-      .box { border: 0.6px solid #111827; margin-bottom: 4px; border-radius: 2px; overflow: hidden; }
+      .box { border: 0.6px solid #111827; margin-bottom: 3px; border-radius: 2px; overflow: hidden; }
       .box-inner-title { font-weight: 700; font-size: 9px; text-transform: uppercase; padding: 4px 6px; border-top: 0.6px solid #111827; border-bottom: 0.6px solid #111827; background: #f8fafc; }
-      .top-grid { display: grid; grid-template-columns: 20% 80%; gap: 4px; margin-bottom: 4px; }
+      .top-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 4fr); gap: 3px; margin-bottom: 3px; }
+      .top-grid > .box { min-width: 0; }
       .logo-box { min-height: 102px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; }
       .logo { max-width: 100%; max-height: 68px; width: auto; height: auto; object-fit: contain; }
       .logo-fallback { width: 100%; min-height: 68px; border: 0.6px dashed #9ca3af; background: #f9fafb; color: #6b7280; font-weight: 700; font-size: 10px; display: flex; align-items: center; justify-content: center; text-align: center; }
-      .logo-contact { width: 100%; margin-top: 6px; font-size: 8px; line-height: 1.35; text-align: left; border-top: 0.6px solid #111827; padding-top: 4px; }
+      .logo-contact { width: 100%; margin-top: 4px; font-size: 8px; line-height: 1.35; text-align: center; }
       .danfe-box { padding: 6px; }
       .danfe-title { font-size: 18px; font-weight: 800; text-align: center; line-height: 1; letter-spacing: 0.4px; }
       .sub-title { text-align: center; font-size: 9px; margin-top: 2px; line-height: 1.2; }
@@ -1152,7 +1157,7 @@ export function VendaDiretaTab() {
       .items .wrap { white-space: normal; word-break: break-word; }
       .right { text-align: right; }
       .center { text-align: center; }
-      .double-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+      .double-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 3px; }
       .info-list { padding: 4px 6px; border-bottom: 0.6px solid #111827; line-height: 1.3; word-break: break-word; }
       .info-list:last-child { border-bottom: 0; }
       .footer-box { padding: 6px; line-height: 1.35; font-size: 9px; }
