@@ -11,9 +11,12 @@ import {
   VendaDiretaMutationResponse,
   VendaFiscalXmlResponse,
 } from "../types";
-import { formatDate, formatDateOnly, toInputDate } from "../utils";
+import { formatDate, toInputDate } from "../utils";
 
 const CATALOGO_CATEGORIAS = ["Festas", "Embalagens", "Doces"] as const;
+const FRETE_NAO_APLICAVEL = "NAO_APLICAVEL";
+const FRETE_CELEBRAR_FESTAS = "CELEBRAR_FESTAS";
+const FRETE_DESTINATARIO = "DESTINATARIO";
 
 export function VendaDiretaTab() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -68,6 +71,17 @@ export function VendaDiretaTab() {
     itens: [] as any[],
     data_entrega: "",
     frete: 0,
+    freteData: {
+      modalidade: FRETE_NAO_APLICAVEL,
+      cpfCnpj: "",
+      nomeRazaoSocial: "",
+      placa: "",
+      qtdVolumes: "",
+      kmAproximado: "",
+    },
+    pedidoInterno: "",
+    observacoesComerciais: "",
+    informacaoFiscalComplementar: "",
     formaPagamento: "DINHEIRO",
     status: "PEDIDO",
   });
@@ -236,7 +250,9 @@ export function VendaDiretaTab() {
       .trim();
 
   const mapNfeTpagLabel = (code?: string) => {
-    const normalized = String(code || "").trim().toUpperCase();
+    const normalized = String(code || "")
+      .trim()
+      .toUpperCase();
     if (normalized === "01") return "Dinheiro";
     if (normalized === "02") return "Cheque";
     if (normalized === "03") return "Cartão de Crédito";
@@ -351,7 +367,38 @@ export function VendaDiretaTab() {
     return d.toLocaleDateString("pt-BR");
   };
 
-  const normalizeDigits = (value: any) => String(value || "").replace(/\D/g, "");
+  const normalizeDigits = (value: any) =>
+    String(value || "").replace(/\D/g, "");
+
+  const normalizeFreteModalidade = (value: any) => {
+    const normalized = String(value || "")
+      .trim()
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (normalized === "CELEBRAR_FESTAS" || normalized === "CELEBRAR FESTAS") {
+      return FRETE_CELEBRAR_FESTAS;
+    }
+    if (normalized === "DESTINATARIO") {
+      return FRETE_DESTINATARIO;
+    }
+    return FRETE_NAO_APLICAVEL;
+  };
+
+  const formatCpfCnpjInput = (value: string) => {
+    const digits = normalizeDigits(value).slice(0, 14);
+    if (digits.length <= 11) {
+      return digits
+        .replace(/^(\d{3})(\d)/, "$1.$2")
+        .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+        .replace(/\.(\d{3})(\d)/, ".$1-$2");
+    }
+    return digits
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  };
 
   const formatCpfCnpj = (value: any) => {
     const digits = normalizeDigits(value);
@@ -417,8 +464,7 @@ export function VendaDiretaTab() {
     bars.push(3, 1, 2, 1, 2);
     const unit = 1.15;
     const height = 52;
-    const totalWidth =
-      bars.reduce((acc, v) => acc + v, 0) * unit + 16;
+    const totalWidth = bars.reduce((acc, v) => acc + v, 0) * unit + 16;
     let x = 8;
     const rects: string[] = [];
     for (let i = 0; i < bars.length; i += 1) {
@@ -612,7 +658,8 @@ export function VendaDiretaTab() {
         pesoLiquido: getXmlTagValue(volumePrincipal, "pesoL") || undefined,
       },
       pagamento: {
-        tPag: pagamentoPrincipal.tPag || getXmlTagValue(xml, "tPag") || undefined,
+        tPag:
+          pagamentoPrincipal.tPag || getXmlTagValue(xml, "tPag") || undefined,
         vPag:
           (pagamentoTotal > 0 ? String(pagamentoTotal) : "") ||
           pagamentoPrincipal.vPag ||
@@ -648,8 +695,15 @@ export function VendaDiretaTab() {
         ? itensXml
         : itensVenda.map((it: any, idx: number) => ({
             codigo:
-              it?.produto?.codigo_barras || it?.produtoId || String(idx + 1),
-            descricao: it?.produto?.nome || it?.produtoNome || "Item",
+              it?.produto?.codigo_barras ||
+              it?.codigo_barras ||
+              it?.produtoId ||
+              String(idx + 1),
+            descricao:
+              it?.produto?.nome ||
+              it?.produtoNome ||
+              it?.descricao ||
+              `Item ${idx + 1}`,
             ncm: it?.ncm || it?.produto?.ncm || "-",
             cfop: it?.cfop_aplicado || "-",
             csosn: it?.csosn_aplicado || "-",
@@ -660,10 +714,32 @@ export function VendaDiretaTab() {
               Number(it?.qtd || 0) * Number(it?.preco_un_aplicado || 0),
             ),
           }));
-    const itens = itensBase.map((it, idx) => ({
-      ...it,
-      codigo: normalizeDanfeItemCode(it?.codigo, idx),
-    }));
+    const isGenericItemLabel = (value: any) => {
+      const text = String(value || "")
+        .trim()
+        .toUpperCase();
+      return !text || text === "ITEM" || /^ITEM\s*\d*$/.test(text);
+    };
+    const itens = itensBase.map((it, idx) => {
+      const vendaItem = itensVenda[idx] || {};
+      const codigoFallback =
+        vendaItem?.produto?.codigo_barras || vendaItem?.codigo_barras || "";
+      const descricaoFallback =
+        vendaItem?.produto?.nome || vendaItem?.produtoNome || "";
+      const codigoResolvido =
+        isUuidLike(String(it?.codigo || "").trim()) ||
+        String(it?.codigo || "").trim() === String(idx + 1)
+          ? codigoFallback || it?.codigo
+          : it?.codigo;
+      const descricaoResolvida = isGenericItemLabel(it?.descricao)
+        ? descricaoFallback || it?.descricao
+        : it?.descricao;
+      return {
+        ...it,
+        codigo: normalizeDanfeItemCode(codigoResolvido, idx),
+        descricao: descricaoResolvida || `Item ${idx + 1}`,
+      };
+    });
 
     const emit = nfe.emitente || {};
     const emitEndereco = emit.endereco || {};
@@ -678,7 +754,6 @@ export function VendaDiretaTab() {
     const logoSrc = resolvePrintableAssetUrl(logoLoja);
 
     const empresaNome = emit.nome || "Emitente não informado";
-    const empresaFantasia = emit.fantasia || "-";
     const empresaDocumento = formatCpfCnpj(emit.cnpj || emit.cpf || "-");
     const empresaTelefone = formatPhone(emit.fone || "-");
     const empresaEndereco = [
@@ -711,10 +786,6 @@ export function VendaDiretaTab() {
     const enderecoDestLinha = [
       destEndereco.logradouro || venda?.endereco_rua || cliente?.rua || "-",
       destEndereco.numero || venda?.endereco_numero || cliente?.numero || "S/N",
-      destEndereco.complemento ||
-        venda?.endereco_complemento ||
-        cliente?.complemento ||
-        "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -740,12 +811,7 @@ export function VendaDiretaTab() {
       String(nfe.naturezaOperacao || ""),
       itens.map((it: any) => String(it?.cfop || "").trim()),
     );
-    const tipoOperacao =
-      String(nfe.tipoOperacao || "").trim() === "0"
-        ? "0 - Entrada"
-        : String(nfe.tipoOperacao || "").trim() === "1"
-          ? "1 - Saída"
-          : "-";
+    const tipoOperacao = "1 - Saída";
     const ambiente = nfe.homologacao ? "Homologação" : "Produção";
     const barcodeDataUri = buildBarcodeDataUri(chaveAcesso);
 
@@ -756,7 +822,6 @@ export function VendaDiretaTab() {
     const valorIcmsSt = toNumber(totais.vST);
     const valorProdutos = toNumber(totais.vProd);
     const valorFrete = toNumber(totais.vFrete);
-    const valorSeguro = toNumber(totais.vSeg);
     const valorDesconto = toNumber(totais.vDesc);
     const valorOutros = toNumber(totais.vOutro);
     const valorIpi = toNumber(totais.vIPI);
@@ -766,7 +831,9 @@ export function VendaDiretaTab() {
     const pagamentoDetalhes = Array.isArray(pagamento.detalhes)
       ? pagamento.detalhes
       : [];
-    const parcelas = Array.isArray(pagamento.parcelas) ? pagamento.parcelas : [];
+    const parcelas = Array.isArray(pagamento.parcelas)
+      ? pagamento.parcelas
+      : [];
 
     const pagamentoRows =
       pagamentoDetalhes.length > 0
@@ -873,26 +940,31 @@ export function VendaDiretaTab() {
           <div class="section-title">Emitente</div>
           <div class="grid emit-grid">
             <div><b>Razão Social</b><span>${escapeHtml(empresaNome)}</span></div>
-            <div><b>Nome Fantasia</b><span>${escapeHtml(empresaFantasia)}</span></div>
             <div><b>Endereço Completo</b><span>${escapeHtml(empresaEndereco)}</span></div>
             <div><b>Cidade / UF / CEP</b><span>${escapeHtml(empresaCidadeUf)}</span></div>
             <div><b>Telefone</b><span>${escapeHtml(empresaTelefone)}</span></div>
             <div><b>CNPJ</b><span>${escapeHtml(empresaDocumento)}</span></div>
             <div><b>Inscrição Estadual</b><span>${escapeHtml(emit.ie || "-")}</span></div>
             <div><b>Natureza da Operação</b><span>${escapeHtml(naturezaOperacao)}</span></div>
+            <div><b>CRT</b><span>${escapeHtml(emit.crt || "-")}</span></div>
           </div>
         </div>
 
         <div class="box">
           <div class="section-title">Destinatário / Remetente</div>
-          <div class="grid dest-grid">
+          <div class="grid dest-grid-row">
             <div><b>Nome / Razão Social</b><span>${escapeHtml(dest.nome || cliente?.nome || "-")}</span></div>
             <div><b>${escapeHtml(documentoDestTipo)}</b><span>${escapeHtml(formatCpfCnpj(documentoDest || "-"))}</span></div>
             <div><b>Inscrição Estadual</b><span>${escapeHtml(dest.ie || "-")}</span></div>
             <div><b>Data Emissão</b><span>${escapeHtml(dataEmissao)}</span></div>
-            <div><b>Data Saída/Entrada</b><span>${escapeHtml(dataSaidaEntrada)}</span></div>
-            <div class="span3"><b>Endereço Completo</b><span>${escapeHtml(enderecoDestLinha)}</span></div>
+          </div>
+          <div class="grid dest-grid-row">
+            <div><b>Endereço</b><span>${escapeHtml(enderecoDestLinha)}</span></div>
+            <div><b>Complemento</b><span>${escapeHtml(destEndereco.complemento || venda?.endereco_complemento || cliente?.complemento || "-")}</span></div>
             <div><b>Bairro</b><span>${escapeHtml(bairroDest)}</span></div>
+            <div><b>Data Saída/Entrada</b><span>${escapeHtml(dataSaidaEntrada)}</span></div>
+          </div>
+          <div class="grid dest-grid-row">
             <div><b>Cidade</b><span>${escapeHtml(cidadeDest)}</span></div>
             <div><b>UF</b><span>${escapeHtml(ufDest)}</span></div>
             <div><b>CEP</b><span>${escapeHtml(cepDest)}</span></div>
@@ -937,7 +1009,6 @@ export function VendaDiretaTab() {
             <div><b>Valor ICMS ST</b><span>${formatMoney(valorIcmsSt)}</span></div>
             <div><b>Valor Produtos</b><span>${formatMoney(valorProdutos)}</span></div>
             <div><b>Frete</b><span>${formatMoney(valorFrete)}</span></div>
-            <div><b>Seguro</b><span>${formatMoney(valorSeguro)}</span></div>
             <div><b>Desconto</b><span>${formatMoney(valorDesconto)}</span></div>
             <div><b>Outras Despesas</b><span>${formatMoney(valorOutros)}</span></div>
             <div><b>IPI</b><span>${formatMoney(valorIpi)}</span></div>
@@ -1033,10 +1104,10 @@ export function VendaDiretaTab() {
       .page:last-child { page-break-after: auto; }
       .box { border: 0.6px solid #111827; margin-bottom: 4px; border-radius: 2px; overflow: hidden; }
       .box-inner-title { font-weight: 700; font-size: 9px; text-transform: uppercase; padding: 4px 6px; border-top: 0.6px solid #111827; border-bottom: 0.6px solid #111827; background: #f8fafc; }
-      .top-grid { display: grid; grid-template-columns: 24% 76%; gap: 4px; margin-bottom: 4px; }
-      .logo-box { min-height: 130px; display: flex; align-items: center; justify-content: center; padding: 8px; }
-      .logo { max-width: 100%; max-height: 90px; width: auto; height: auto; object-fit: contain; }
-      .logo-fallback { width: 100%; min-height: 84px; border: 0.6px dashed #9ca3af; background: #f9fafb; color: #6b7280; font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; text-align: center; }
+      .top-grid { display: grid; grid-template-columns: 20% 80%; gap: 4px; margin-bottom: 4px; }
+      .logo-box { min-height: 102px; display: flex; align-items: center; justify-content: center; padding: 6px; }
+      .logo { max-width: 100%; max-height: 68px; width: auto; height: auto; object-fit: contain; }
+      .logo-fallback { width: 100%; min-height: 68px; border: 0.6px dashed #9ca3af; background: #f9fafb; color: #6b7280; font-weight: 700; font-size: 10px; display: flex; align-items: center; justify-content: center; text-align: center; }
       .danfe-box { padding: 6px; }
       .danfe-title { font-size: 18px; font-weight: 800; text-align: center; line-height: 1; letter-spacing: 0.4px; }
       .sub-title { text-align: center; font-size: 9px; margin-top: 2px; line-height: 1.2; }
@@ -1054,10 +1125,9 @@ export function VendaDiretaTab() {
       .section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-bottom: 0.6px solid #111827; letter-spacing: 0.2px; }
       .grid { display: grid; gap: 0; }
       .emit-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .dest-grid { grid-template-columns: 2fr 1fr 1fr 1fr 1fr; }
-      .emit-grid > div, .dest-grid > div, .tax-grid > div, .transport-grid > div { border-right: 0.6px solid #111827; border-bottom: 0.6px solid #111827; padding: 3px 5px; min-height: 30px; }
-      .emit-grid > div:nth-child(4n), .dest-grid > div:nth-child(5n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
-      .dest-grid > .span3 { grid-column: span 3; }
+      .dest-grid-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .emit-grid > div, .dest-grid-row > div, .tax-grid > div, .transport-grid > div { border-right: 0.6px solid #111827; border-bottom: 0.6px solid #111827; padding: 3px 5px; min-height: 30px; }
+      .emit-grid > div:nth-child(4n), .dest-grid-row > div:nth-child(4n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
       .tax-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .transport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .grid b { display: block; font-size: 8px; text-transform: uppercase; color: #334155; }
@@ -1072,10 +1142,10 @@ export function VendaDiretaTab() {
       .info-list { padding: 4px 6px; border-bottom: 0.6px solid #111827; line-height: 1.3; word-break: break-word; }
       .info-list:last-child { border-bottom: 0; }
       .footer-box { padding: 6px; line-height: 1.35; font-size: 9px; }
-      .canhoto { border: 0.6px dashed #111827; padding: 6px; font-size: 9px; }
+      .canhoto { border: 0.6px dashed #111827; padding: 6px; font-size: 9px; min-height: 120px; }
       .canhoto-text { margin-top: 4px; line-height: 1.3; }
-      .signature { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-      .signature div { border-top: 0.6px solid #111827; padding-top: 3px; text-align: center; min-height: 16px; }
+      .signature { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .signature div { border-top: 0.6px solid #111827; padding-top: 3px; text-align: center; min-height: 28px; }
     </style>
   </head>
   <body>
@@ -1284,6 +1354,17 @@ export function VendaDiretaTab() {
           data_entrega: form.data_entrega || null,
           frete: form.frete || 0,
           status: form.status,
+          freteData: {
+            modalidade: normalizeFreteModalidade(form.freteData?.modalidade),
+            cpfCnpj: form.freteData?.cpfCnpj || "",
+            nomeRazaoSocial: form.freteData?.nomeRazaoSocial || "",
+            placa: form.freteData?.placa || "",
+            qtdVolumes: form.freteData?.qtdVolumes || "",
+            kmAproximado: form.freteData?.kmAproximado || "",
+          },
+          pedidoInterno: form.pedidoInterno || "",
+          observacoesComerciais: form.observacoesComerciais || "",
+          informacaoFiscalComplementar: form.informacaoFiscalComplementar || "",
         });
         const vendaRetornada = result?.venda
           ? { ...vendaParaImpressao, ...result.venda }
@@ -1313,6 +1394,17 @@ export function VendaDiretaTab() {
           data_entrega: form.data_entrega || null,
           frete: form.frete || 0,
           status: form.status,
+          freteData: {
+            modalidade: normalizeFreteModalidade(form.freteData?.modalidade),
+            cpfCnpj: form.freteData?.cpfCnpj || "",
+            nomeRazaoSocial: form.freteData?.nomeRazaoSocial || "",
+            placa: form.freteData?.placa || "",
+            qtdVolumes: form.freteData?.qtdVolumes || "",
+            kmAproximado: form.freteData?.kmAproximado || "",
+          },
+          pedidoInterno: form.pedidoInterno || "",
+          observacoesComerciais: form.observacoesComerciais || "",
+          informacaoFiscalComplementar: form.informacaoFiscalComplementar || "",
         });
         const vendaRetornada = result?.venda
           ? { ...vendaParaImpressao, ...result.venda }
@@ -1329,6 +1421,17 @@ export function VendaDiretaTab() {
         itens: [],
         data_entrega: "",
         frete: 0,
+        freteData: {
+          modalidade: FRETE_NAO_APLICAVEL,
+          cpfCnpj: "",
+          nomeRazaoSocial: "",
+          placa: "",
+          qtdVolumes: "",
+          kmAproximado: "",
+        },
+        pedidoInterno: "",
+        observacoesComerciais: "",
+        informacaoFiscalComplementar: "",
         formaPagamento: "DINHEIRO",
         status: "PEDIDO",
       });
@@ -1693,6 +1796,17 @@ export function VendaDiretaTab() {
                 itens: [],
                 data_entrega: "",
                 frete: 0,
+                freteData: {
+                  modalidade: FRETE_NAO_APLICAVEL,
+                  cpfCnpj: "",
+                  nomeRazaoSocial: "",
+                  placa: "",
+                  qtdVolumes: "",
+                  kmAproximado: "",
+                },
+                pedidoInterno: "",
+                observacoesComerciais: "",
+                informacaoFiscalComplementar: "",
                 formaPagamento: "DINHEIRO",
                 status: "PEDIDO",
               });
@@ -1887,6 +2001,23 @@ export function VendaDiretaTab() {
                                 ? toInputDate(v.data_entrega)
                                 : "",
                               frete: v.frete || 0,
+                              freteData: {
+                                modalidade: normalizeFreteModalidade(
+                                  v.freteModalidade,
+                                ),
+                                cpfCnpj: formatCpfCnpjInput(
+                                  v.freteCpfCnpj || "",
+                                ),
+                                nomeRazaoSocial: v.freteNomeRazaoSocial || "",
+                                placa: v.fretePlaca || "",
+                                qtdVolumes: v.freteQtdVolumes || "",
+                                kmAproximado: v.freteKmAproximado || "",
+                              },
+                              pedidoInterno: v.pedidoInterno || "",
+                              observacoesComerciais:
+                                v.observacoesComerciais || "",
+                              informacaoFiscalComplementar:
+                                v.informacaoFiscalComplementar || "",
                               formaPagamento: v.contaBancariaId || "DINHEIRO",
                               status: v.status,
                             });
@@ -2157,6 +2288,17 @@ export function VendaDiretaTab() {
             itens: [],
             data_entrega: "",
             frete: 0,
+            freteData: {
+              modalidade: FRETE_NAO_APLICAVEL,
+              cpfCnpj: "",
+              nomeRazaoSocial: "",
+              placa: "",
+              qtdVolumes: "",
+              kmAproximado: "",
+            },
+            pedidoInterno: "",
+            observacoesComerciais: "",
+            informacaoFiscalComplementar: "",
             formaPagamento: "DINHEIRO",
             status: "PEDIDO",
           });
@@ -2663,6 +2805,211 @@ export function VendaDiretaTab() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase">
+                    Modalidade de Frete
+                  </label>
+                  <select
+                    className="w-full p-2.5 border rounded-lg"
+                    value={form.freteData?.modalidade || FRETE_NAO_APLICAVEL}
+                    onChange={(e) =>
+                      setForm((prev: any) => ({
+                        ...prev,
+                        freteData: {
+                          modalidade: normalizeFreteModalidade(e.target.value),
+                          cpfCnpj: "",
+                          nomeRazaoSocial: "",
+                          placa: "",
+                          qtdVolumes: "",
+                          kmAproximado: "",
+                        },
+                      }))
+                    }
+                  >
+                    <option value={FRETE_NAO_APLICAVEL}>Não Aplicável</option>
+                    <option value={FRETE_CELEBRAR_FESTAS}>
+                      Celebrar Festas
+                    </option>
+                    <option value={FRETE_DESTINATARIO}>Destinatário</option>
+                  </select>
+                </div>
+              </div>
+
+              {normalizeFreteModalidade(form.freteData?.modalidade) ===
+                FRETE_CELEBRAR_FESTAS && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Quantidade de Volumes
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full p-2.5 border rounded-lg"
+                      value={form.freteData?.qtdVolumes || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            qtdVolumes: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      KM Percorrido Aproximado
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      className="w-full p-2.5 border rounded-lg"
+                      value={form.freteData?.kmAproximado || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            kmAproximado: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {normalizeFreteModalidade(form.freteData?.modalidade) ===
+                FRETE_DESTINATARIO && (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      CPF/CNPJ
+                    </label>
+                    <input
+                      className="w-full p-2.5 border rounded-lg"
+                      value={form.freteData?.cpfCnpj || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            cpfCnpj: formatCpfCnpjInput(e.target.value),
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Nome / Razão Social
+                    </label>
+                    <input
+                      className="w-full p-2.5 border rounded-lg"
+                      value={form.freteData?.nomeRazaoSocial || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            nomeRazaoSocial: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Placa
+                    </label>
+                    <input
+                      className="w-full p-2.5 border rounded-lg uppercase"
+                      value={form.freteData?.placa || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            placa: e.target.value.toUpperCase(),
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase">
+                      Quantidade de Volumes
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-full p-2.5 border rounded-lg"
+                      value={form.freteData?.qtdVolumes || ""}
+                      onChange={(e) =>
+                        setForm((prev: any) => ({
+                          ...prev,
+                          freteData: {
+                            ...prev.freteData,
+                            qtdVolumes: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Pedido Interno
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.pedidoInterno || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, pedidoInterno: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Observações Comerciais
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.observacoesComerciais || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      observacoesComerciais: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">
+                  Informação Fiscal Complementar
+                </label>
+                <input
+                  className="w-full p-2.5 border rounded-lg"
+                  value={form.informacaoFiscalComplementar || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      informacaoFiscalComplementar: e.target.value,
+                    })
+                  }
+                />
               </div>
             </div>
           </div>
