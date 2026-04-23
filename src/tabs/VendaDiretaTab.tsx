@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
 import { CurrencyInput, Modal } from "../components/Shared";
-import logoLoja from "../img/logo.png";
+import logoLoja from "../img/logo.png?inline";
 import {
   Cliente,
   ContaBancaria,
