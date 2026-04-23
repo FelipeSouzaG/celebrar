@@ -313,6 +313,16 @@ export function VendaDiretaTab() {
     return code.length > 24 ? code.slice(0, 24) : code;
   };
 
+  const isGenericDanfeItemCode = (rawCode: any, index: number) => {
+    const code = String(rawCode || "").trim();
+    if (!code) return true;
+    if (isUuidLike(code)) return true;
+    const digits = code.replace(/\D/g, "");
+    if (!digits) return false;
+    if (digits.length > 3) return false;
+    return Number(digits) === index + 1;
+  };
+
   const shouldForceIcmsZeroForCsosn102 = (itens: Array<{ csosn?: string }>) => {
     if (!Array.isArray(itens) || itens.length === 0) return false;
     const normalized = itens
@@ -727,8 +737,7 @@ export function VendaDiretaTab() {
       const descricaoFallback =
         vendaItem?.produto?.nome || vendaItem?.produtoNome || "";
       const codigoResolvido =
-        isUuidLike(String(it?.codigo || "").trim()) ||
-        String(it?.codigo || "").trim() === String(idx + 1)
+        isGenericDanfeItemCode(it?.codigo, idx)
           ? codigoFallback || it?.codigo
           : it?.codigo;
       const descricaoResolvida = isGenericItemLabel(it?.descricao)
@@ -756,6 +765,7 @@ export function VendaDiretaTab() {
     const empresaNome = emit.nome || "Emitente não informado";
     const empresaDocumento = formatCpfCnpj(emit.cnpj || emit.cpf || "-");
     const empresaTelefone = formatPhone(emit.fone || "-");
+    const empresaSite = "www.celebrarfestasembalegens.com.br";
     const empresaEndereco = [
       emitEndereco.logradouro || "-",
       emitEndereco.numero || "S/N",
@@ -911,6 +921,10 @@ export function VendaDiretaTab() {
         <div class="top-grid">
           <div class="box logo-box">
             ${logoContent}
+            <div class="logo-contact">
+              <div><b>Telefone:</b> ${escapeHtml(empresaTelefone)}</div>
+              <div><b>Site:</b> ${escapeHtml(empresaSite)}</div>
+            </div>
           </div>
           <div class="box danfe-box">
             <div class="danfe-title">DANFE</div>
@@ -938,15 +952,15 @@ export function VendaDiretaTab() {
 
         <div class="box">
           <div class="section-title">Emitente</div>
-          <div class="grid emit-grid">
+          <div class="grid emit-grid-row">
             <div><b>Razão Social</b><span>${escapeHtml(empresaNome)}</span></div>
             <div><b>Endereço Completo</b><span>${escapeHtml(empresaEndereco)}</span></div>
             <div><b>Cidade / UF / CEP</b><span>${escapeHtml(empresaCidadeUf)}</span></div>
-            <div><b>Telefone</b><span>${escapeHtml(empresaTelefone)}</span></div>
+          </div>
+          <div class="grid emit-grid-row">
             <div><b>CNPJ</b><span>${escapeHtml(empresaDocumento)}</span></div>
             <div><b>Inscrição Estadual</b><span>${escapeHtml(emit.ie || "-")}</span></div>
             <div><b>Natureza da Operação</b><span>${escapeHtml(naturezaOperacao)}</span></div>
-            <div><b>CRT</b><span>${escapeHtml(emit.crt || "-")}</span></div>
           </div>
         </div>
 
@@ -1060,7 +1074,6 @@ export function VendaDiretaTab() {
           </div>
           <div class="box">
             <div class="section-title">Informações Adicionais</div>
-            <div class="info-list"><b>Empresa optante pelo Simples Nacional:</b> ${emit.crt === "1" ? "SIM" : "NÃO"}</div>
             <div class="info-list"><b>Tributos aproximados:</b> ${formatMoney(valorTotTrib)} (Fonte IBPT)</div>
             <div class="info-list"><b>Pedido interno:</b> ${escapeHtml(infos.pedidoInterno || "-")}</div>
             <div class="info-list"><b>Observações comerciais:</b> ${escapeHtml(infos.infCpl || "-")}</div>
@@ -1105,9 +1118,10 @@ export function VendaDiretaTab() {
       .box { border: 0.6px solid #111827; margin-bottom: 4px; border-radius: 2px; overflow: hidden; }
       .box-inner-title { font-weight: 700; font-size: 9px; text-transform: uppercase; padding: 4px 6px; border-top: 0.6px solid #111827; border-bottom: 0.6px solid #111827; background: #f8fafc; }
       .top-grid { display: grid; grid-template-columns: 20% 80%; gap: 4px; margin-bottom: 4px; }
-      .logo-box { min-height: 102px; display: flex; align-items: center; justify-content: center; padding: 6px; }
+      .logo-box { min-height: 102px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 6px; }
       .logo { max-width: 100%; max-height: 68px; width: auto; height: auto; object-fit: contain; }
       .logo-fallback { width: 100%; min-height: 68px; border: 0.6px dashed #9ca3af; background: #f9fafb; color: #6b7280; font-weight: 700; font-size: 10px; display: flex; align-items: center; justify-content: center; text-align: center; }
+      .logo-contact { width: 100%; margin-top: 6px; font-size: 8px; line-height: 1.35; text-align: left; border-top: 0.6px solid #111827; padding-top: 4px; }
       .danfe-box { padding: 6px; }
       .danfe-title { font-size: 18px; font-weight: 800; text-align: center; line-height: 1; letter-spacing: 0.4px; }
       .sub-title { text-align: center; font-size: 9px; margin-top: 2px; line-height: 1.2; }
@@ -1124,10 +1138,10 @@ export function VendaDiretaTab() {
       .consulta a { color: #0f172a; text-decoration: none; }
       .section-title { font-size: 9px; font-weight: 800; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-bottom: 0.6px solid #111827; letter-spacing: 0.2px; }
       .grid { display: grid; gap: 0; }
-      .emit-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .emit-grid-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .dest-grid-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .emit-grid > div, .dest-grid-row > div, .tax-grid > div, .transport-grid > div { border-right: 0.6px solid #111827; border-bottom: 0.6px solid #111827; padding: 3px 5px; min-height: 30px; }
-      .emit-grid > div:nth-child(4n), .dest-grid-row > div:nth-child(4n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
+      .emit-grid-row > div, .dest-grid-row > div, .tax-grid > div, .transport-grid > div { border-right: 0.6px solid #111827; border-bottom: 0.6px solid #111827; padding: 3px 5px; min-height: 30px; }
+      .emit-grid-row > div:nth-child(3n), .dest-grid-row > div:nth-child(4n), .tax-grid > div:nth-child(5n), .transport-grid > div:nth-child(4n) { border-right: 0; }
       .tax-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .transport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .grid b { display: block; font-size: 8px; text-transform: uppercase; color: #334155; }
@@ -1142,9 +1156,9 @@ export function VendaDiretaTab() {
       .info-list { padding: 4px 6px; border-bottom: 0.6px solid #111827; line-height: 1.3; word-break: break-word; }
       .info-list:last-child { border-bottom: 0; }
       .footer-box { padding: 6px; line-height: 1.35; font-size: 9px; }
-      .canhoto { border: 0.6px dashed #111827; padding: 6px; font-size: 9px; min-height: 120px; }
+      .canhoto { border: 0.6px dashed #111827; padding: 6px; font-size: 9px; min-height: 120px; display: flex; flex-direction: column; }
       .canhoto-text { margin-top: 4px; line-height: 1.3; }
-      .signature { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .signature { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding-top: 12px; }
       .signature div { border-top: 0.6px solid #111827; padding-top: 3px; text-align: center; min-height: 28px; }
     </style>
   </head>
