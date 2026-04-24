@@ -462,6 +462,24 @@ export function FinanceiroTab() {
       .catch((e: any) => alert(e.message));
   };
 
+  const handleDeleteAportePagamento = async (item: ExtratoItem) => {
+    if (item.tipo !== "SAIDA") return;
+    if (!confirm("Excluir este pagamento de aporte?")) return;
+    try {
+      await adminApi.deleteAporteMovimento(item.id);
+      if (selectedConta) {
+        await fetchExtratoConta(
+          selectedConta.id,
+          extratoPeriod.mes,
+          extratoPeriod.ano,
+        );
+      }
+      loadData();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   const isContaAporte = selectedConta?.tipo === "Aporte";
   const saldoAporteAcumulado =
     extratoContaData?.totalAcumulado ?? extratoContaData?.total ?? 0;
@@ -1682,7 +1700,8 @@ export function FinanceiroTab() {
                     <th className="p-3">Data</th>
                     <th className="p-3">Descrição</th>
                     <th className="p-3 text-right">Valor</th>
-                    {selectedConta.tipo === "Crédito" && (
+                    {(selectedConta.tipo === "Crédito" ||
+                      selectedConta.tipo === "Aporte") && (
                       <th className="p-3 text-center">Ações</th>
                     )}
                   </tr>
@@ -1692,7 +1711,12 @@ export function FinanceiroTab() {
                   extratoContaData.itens.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={selectedConta.tipo === "Crédito" ? 4 : 3}
+                        colSpan={
+                          selectedConta.tipo === "Crédito" ||
+                          selectedConta.tipo === "Aporte"
+                            ? 4
+                            : 3
+                        }
                         className="p-6 text-center text-slate-400"
                       >
                         Nenhum registro encontrado neste período.
@@ -1735,6 +1759,21 @@ export function FinanceiroTab() {
                             >
                               <Icons.Trash />
                             </button>
+                          </td>
+                        )}
+                        {selectedConta.tipo === "Aporte" && (
+                          <td className="p-3 flex justify-center gap-2">
+                            {item.tipo === "SAIDA" ? (
+                              <button
+                                onClick={() => handleDeleteAportePagamento(item)}
+                                className="text-rose-500 hover:bg-rose-50 p-1.5 rounded transition-colors"
+                                title="Remover pagamento de aporte"
+                              >
+                                <Icons.Trash />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-400">-</span>
+                            )}
                           </td>
                         )}
                       </tr>
