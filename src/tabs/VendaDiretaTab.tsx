@@ -18,6 +18,45 @@ const FRETE_NAO_APLICAVEL = "NAO_APLICAVEL";
 const FRETE_CELEBRAR_FESTAS = "CELEBRAR_FESTAS";
 const FRETE_DESTINATARIO = "DESTINATARIO";
 
+const normalizePaymentToken = (value: string | null | undefined) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
+const mapContaTipoToPaymentType = (value: string | null | undefined) => {
+  const normalized = normalizePaymentToken(value);
+  if (normalized === "PIX") return "PIX";
+  if (
+    normalized === "CREDITO" ||
+    normalized === "CARTAO_CREDITO" ||
+    normalized === "CARTAODECREDITO" ||
+    normalized === "CARTAO"
+  ) {
+    return "CARTAO_CREDITO";
+  }
+  if (
+    normalized === "DEBITO" ||
+    normalized === "CARTAO_DEBITO" ||
+    normalized === "CARTAODEBITO"
+  ) {
+    return "CARTAO_DEBITO";
+  }
+  return "DINHEIRO";
+};
+
+const isCardPaymentType = (value: string | null | undefined) => {
+  const normalized = normalizePaymentToken(value);
+  return (
+    normalized === "CARTAO_CREDITO" ||
+    normalized === "CREDITO" ||
+    normalized === "CARTAO_DEBITO" ||
+    normalized === "DEBITO"
+  );
+};
+
 export function VendaDiretaTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -82,6 +121,7 @@ export function VendaDiretaTab() {
     pedidoInterno: "",
     observacoesComerciais: "",
     informacaoFiscalComplementar: "",
+    nsuTransacao: "",
     formaPagamento: "DINHEIRO",
     status: "PEDIDO",
   });
@@ -209,12 +249,21 @@ export function VendaDiretaTab() {
     0,
   );
   const total = subtotal + (form.frete || 0);
+  const selectedConta =
+    form.formaPagamento === "DINHEIRO"
+      ? null
+      : contas.find((conta) => conta.id === form.formaPagamento) || null;
+  const selectedPaymentType = selectedConta
+    ? mapContaTipoToPaymentType(selectedConta.tipo)
+    : "DINHEIRO";
+  const selectedPaymentIsCard = isCardPaymentType(selectedPaymentType);
 
   const resolvePagamentoLabel = (tipo?: string) => {
-    const t = String(tipo || "").toUpperCase();
+    const t = normalizePaymentToken(tipo);
     if (t === "DINHEIRO") return "Dinheiro";
     if (t === "PIX") return "PIX";
-    if (t === "CARTAO") return "Cartão";
+    if (t === "CARTAO_CREDITO" || t === "CREDITO") return "Crédito";
+    if (t === "CARTAO_DEBITO" || t === "DEBITO") return "Débito";
     return t || "-";
   };
 
@@ -255,8 +304,8 @@ export function VendaDiretaTab() {
       .toUpperCase();
     if (normalized === "01") return "Dinheiro";
     if (normalized === "02") return "Cheque";
-    if (normalized === "03") return "Cartão de Crédito";
-    if (normalized === "04") return "Cartão de Débito";
+    if (normalized === "03") return "Crédito";
+    if (normalized === "04") return "Débito";
     if (normalized === "05") return "Crédito Loja";
     if (normalized === "10") return "Vale Alimentação";
     if (normalized === "11") return "Vale Refeição";
@@ -272,8 +321,8 @@ export function VendaDiretaTab() {
     if (normalized === "DINHEIRO") return "Dinheiro";
     if (normalized === "PIX") return "PIX";
     if (normalized === "CARTAO" || normalized === "CARTÃO") return "Cartão";
-    if (normalized === "CARTAO_CREDITO") return "Cartão de Crédito";
-    if (normalized === "CARTAO_DEBITO") return "Cartão de Débito";
+    if (normalized === "CARTAO_CREDITO") return "Crédito";
+    if (normalized === "CARTAO_DEBITO") return "Débito";
     if (normalized === "BOLETO") return "Boleto Bancário";
     const fallback = resolvePagamentoLabel(normalized);
     return fallback === "-" ? "Outros" : fallback;
@@ -1351,7 +1400,8 @@ export function VendaDiretaTab() {
     try {
       const isDinheiro = form.formaPagamento === "DINHEIRO";
       const contaBancariaId = !isDinheiro ? form.formaPagamento : null;
-      const tipo_pagamento = isDinheiro ? "DINHEIRO" : "CARTAO";
+      const tipo_pagamento = isDinheiro ? "DINHEIRO" : selectedPaymentType;
+      const nsu_transacao = String(form.nsuTransacao || "").trim();
 
       if (editingId) {
         // Editar venda existente
@@ -1370,6 +1420,7 @@ export function VendaDiretaTab() {
           total,
           tipo_pagamento,
           contaBancariaId,
+          nsu_transacao,
           data_entrega: form.data_entrega || null,
           frete: form.frete || 0,
           status: form.status,
@@ -1410,6 +1461,7 @@ export function VendaDiretaTab() {
           total,
           tipo_pagamento,
           contaBancariaId,
+          nsu_transacao,
           data_entrega: form.data_entrega || null,
           frete: form.frete || 0,
           status: form.status,
@@ -1451,6 +1503,7 @@ export function VendaDiretaTab() {
         pedidoInterno: "",
         observacoesComerciais: "",
         informacaoFiscalComplementar: "",
+        nsuTransacao: "",
         formaPagamento: "DINHEIRO",
         status: "PEDIDO",
       });
@@ -1826,6 +1879,7 @@ export function VendaDiretaTab() {
                 pedidoInterno: "",
                 observacoesComerciais: "",
                 informacaoFiscalComplementar: "",
+                nsuTransacao: "",
                 formaPagamento: "DINHEIRO",
                 status: "PEDIDO",
               });
@@ -2037,6 +2091,7 @@ export function VendaDiretaTab() {
                                 v.observacoesComerciais || "",
                               informacaoFiscalComplementar:
                                 v.informacaoFiscalComplementar || "",
+                              nsuTransacao: v.nsu_transacao || "",
                               formaPagamento: v.contaBancariaId || "DINHEIRO",
                               status: v.status,
                             });
@@ -2318,6 +2373,7 @@ export function VendaDiretaTab() {
             pedidoInterno: "",
             observacoesComerciais: "",
             informacaoFiscalComplementar: "",
+            nsuTransacao: "",
             formaPagamento: "DINHEIRO",
             status: "PEDIDO",
           });
@@ -2813,9 +2869,23 @@ export function VendaDiretaTab() {
                 <select
                   className="w-full p-2.5 border rounded-lg"
                   value={form.formaPagamento}
-                  onChange={(e) =>
-                    setForm({ ...form, formaPagamento: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    const nextConta =
+                      nextValue === "DINHEIRO"
+                        ? null
+                        : contas.find((conta) => conta.id === nextValue) || null;
+                    const nextType = nextConta
+                      ? mapContaTipoToPaymentType(nextConta.tipo)
+                      : "DINHEIRO";
+                    setForm({
+                      ...form,
+                      formaPagamento: nextValue,
+                      nsuTransacao: isCardPaymentType(nextType)
+                        ? form.nsuTransacao
+                        : "",
+                    });
+                  }}
                 >
                   <option value="DINHEIRO">Dinheiro</option>
                   {contas.map((c) => (
@@ -2825,6 +2895,22 @@ export function VendaDiretaTab() {
                   ))}
                 </select>
               </div>
+              {selectedPaymentIsCard && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase">
+                    NSU / Código autorização
+                  </label>
+                  <input
+                    className="w-full p-2.5 border rounded-lg"
+                    maxLength={128}
+                    value={form.nsuTransacao || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, nsuTransacao: e.target.value })
+                    }
+                    placeholder="Opcional. Se vazio, usa o padrão do .env"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3">
