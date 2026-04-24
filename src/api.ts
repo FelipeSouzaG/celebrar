@@ -438,6 +438,11 @@ class AdminApi {
       body: JSON.stringify(data),
     });
   }
+  deleteAporteMovimento(id: string) {
+    return this.request(`/admin/aportes/movimentos/${id}`, {
+      method: "DELETE",
+    });
+  }
 
   // --- SESSÕES DE CAIXA (VENDAS) ---
   getSessoesCaixa() {
