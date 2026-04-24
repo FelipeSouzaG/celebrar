@@ -314,6 +314,7 @@ export interface VendaAdmin {
   data_venda: string;
   total: number;
   tipo_pagamento: string;
+  nsu_transacao?: string | null;
   frete?: number;
   freteModalidade?: string | null;
   freteCpfCnpj?: string | null;
