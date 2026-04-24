@@ -60,6 +60,11 @@ export function FinanceiroTab() {
     title: string;
     onConfirm: () => void;
   }>({ open: false, title: "", onConfirm: () => {} });
+  const [messageModal, setMessageModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+  }>({ open: false, title: "", message: "" });
 
   const [contasModalOpen, setContasModalOpen] = useState(false);
   const [contas, setContas] = useState<ContaBancaria[]>([]);
@@ -116,6 +121,10 @@ export function FinanceiroTab() {
     contaPagamentoId: "CAIXA",
     descricao: "",
   });
+
+  const showMessage = (message: string, title = "Atenção") => {
+    setMessageModal({ open: true, title, message });
+  };
 
   // Carrega apenas contas de PAGAMENTO para as operações financeiras
   const loadData = async () => {
@@ -276,7 +285,7 @@ export function FinanceiroTab() {
       setModalDespesaOpen(false);
       loadData();
     } catch (e: any) {
-      alert(e.message);
+      showMessage(e.message || "Falha ao salvar lançamento.");
     }
   };
 
@@ -295,7 +304,7 @@ export function FinanceiroTab() {
   const handleConfirmPayment = async (e: FormEvent) => {
     e.preventDefault();
     if (!paymentForm.contaBancariaId && paymentForm.contaBancariaId !== "")
-      return alert("Selecione a conta de saída.");
+      return showMessage("Selecione a conta de saída.");
     try {
       await adminApi.updateDespesa(paymentForm.id, {
         status: "PAGO",
@@ -309,7 +318,7 @@ export function FinanceiroTab() {
       setPaymentModalOpen(false);
       loadData();
     } catch (e: any) {
-      alert(e.message);
+      showMessage(e.message || "Falha ao confirmar pagamento.");
     }
   };
 
@@ -323,7 +332,7 @@ export function FinanceiroTab() {
           loadData();
           setConfirmModal((prev) => ({ ...prev, open: false }));
         } catch (e: any) {
-          alert(e.message);
+          showMessage(e.message || "Falha ao excluir registro.");
         }
       },
     });
@@ -368,7 +377,7 @@ export function FinanceiroTab() {
       setShowNewContaForm(false);
       setContas(await adminApi.getContas({ tipo_uso: "PAGAMENTO" }));
     } catch (e: any) {
-      alert(e.message);
+      showMessage(e.message || "Falha ao criar conta.");
     }
   };
   const handleToggleContaStatus = async (c: ContaBancaria) => {
@@ -387,7 +396,7 @@ export function FinanceiroTab() {
           setContas(await adminApi.getContas({ tipo_uso: "PAGAMENTO" }));
           setConfirmModal((p) => ({ ...p, open: false }));
         } catch (e: any) {
-          alert(e.message);
+          showMessage(e.message || "Falha ao excluir conta.");
           setConfirmModal((p) => ({ ...p, open: false }));
         }
       },
@@ -443,41 +452,58 @@ export function FinanceiroTab() {
       setQuickEditModal({ open: false, item: null });
       if (/\(\d+\/\d+\)/.test(quickForm.descricao)) setParcelaWarningOpen(true);
     } catch (e: any) {
-      alert(e.message);
+      showMessage(e.message || "Falha ao salvar edição rápida.");
     }
   };
   const handleDeleteInvoiceItem = (id: string, desc: string) => {
-    if (!confirm("Remover item?")) return;
-    adminApi
-      .deleteDespesa(id)
-      .then(async () => {
-        if (selectedConta)
-          await fetchExtratoConta(
-            selectedConta.id,
-            extratoPeriod.mes,
-            extratoPeriod.ano,
-          );
-        if (/\(\d+\/\d+\)/.test(desc)) setParcelaWarningOpen(true);
-      })
-      .catch((e: any) => alert(e.message));
+    setConfirmModal({
+      open: true,
+      title: "Remover item?",
+      onConfirm: async () => {
+        try {
+          await adminApi.deleteDespesa(id);
+          if (selectedConta) {
+            await fetchExtratoConta(
+              selectedConta.id,
+              extratoPeriod.mes,
+              extratoPeriod.ano,
+            );
+          }
+          if (/\(\d+\/\d+\)/.test(desc)) setParcelaWarningOpen(true);
+        } catch (e: any) {
+          showMessage(e.message || "Falha ao remover item.");
+        } finally {
+          setConfirmModal((prev) => ({ ...prev, open: false }));
+        }
+      },
+    });
   };
 
   const handleDeleteAportePagamento = async (item: ExtratoItem) => {
-    if (item.tipo !== "SAIDA") return;
-    if (!confirm("Excluir este pagamento de aporte?")) return;
-    try {
-      await adminApi.deleteAporteMovimento(item.id);
-      if (selectedConta) {
-        await fetchExtratoConta(
-          selectedConta.id,
-          extratoPeriod.mes,
-          extratoPeriod.ano,
-        );
-      }
-      loadData();
-    } catch (e: any) {
-      alert(e.message);
-    }
+    setConfirmModal({
+      open: true,
+      title:
+        item.tipo === "SAIDA"
+          ? "Excluir este pagamento de aporte?"
+          : "Excluir este lançamento de aporte?",
+      onConfirm: async () => {
+        try {
+          await adminApi.deleteAporteMovimento(item.id);
+          if (selectedConta) {
+            await fetchExtratoConta(
+              selectedConta.id,
+              extratoPeriod.mes,
+              extratoPeriod.ano,
+            );
+          }
+          loadData();
+        } catch (e: any) {
+          showMessage(e.message || "Falha ao excluir movimento de aporte.");
+        } finally {
+          setConfirmModal((prev) => ({ ...prev, open: false }));
+        }
+      },
+    });
   };
 
   const isContaAporte = selectedConta?.tipo === "Aporte";
@@ -498,11 +524,11 @@ export function FinanceiroTab() {
     e.preventDefault();
     if (!selectedConta) return;
     if (!pagarAporteForm.contaPagamentoId) {
-      alert("Selecione a conta de pagamento.");
+      showMessage("Selecione a conta de pagamento.");
       return;
     }
     if (pagarAporteForm.valor <= 0) {
-      alert("Informe um valor maior que zero.");
+      showMessage("Informe um valor maior que zero.");
       return;
     }
     try {
@@ -515,7 +541,7 @@ export function FinanceiroTab() {
       );
       loadData();
     } catch (e: any) {
-      alert(e.message);
+      showMessage(e.message || "Falha ao pagar aporte.");
     }
   };
 
@@ -570,7 +596,7 @@ export function FinanceiroTab() {
 
   const handleExportarNotasContabilidade = async () => {
     if (contabilidadeNotas.length === 0) {
-      alert("Busque as notas do período antes de exportar o ZIP.");
+      showMessage("Busque as notas do período antes de exportar o ZIP.");
       return;
     }
 
@@ -592,7 +618,7 @@ export function FinanceiroTab() {
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      alert(e.message || "Falha ao exportar ZIP dos XMLs.");
+      showMessage(e.message || "Falha ao exportar ZIP dos XMLs.");
     } finally {
       setExportingContabilidadeZip(false);
     }
@@ -1763,17 +1789,17 @@ export function FinanceiroTab() {
                         )}
                         {selectedConta.tipo === "Aporte" && (
                           <td className="p-3 flex justify-center gap-2">
-                            {item.tipo === "SAIDA" ? (
-                              <button
-                                onClick={() => handleDeleteAportePagamento(item)}
-                                className="text-rose-500 hover:bg-rose-50 p-1.5 rounded transition-colors"
-                                title="Remover pagamento de aporte"
-                              >
-                                <Icons.Trash />
-                              </button>
-                            ) : (
-                              <span className="text-[10px] text-slate-400">-</span>
-                            )}
+                            <button
+                              onClick={() => handleDeleteAportePagamento(item)}
+                              className="text-rose-500 hover:bg-rose-50 p-1.5 rounded transition-colors"
+                              title={
+                                item.tipo === "SAIDA"
+                                  ? "Remover pagamento de aporte"
+                                  : "Remover lançamento de custo/compra"
+                              }
+                            >
+                              <Icons.Trash />
+                            </button>
                           </td>
                         )}
                       </tr>
@@ -2016,6 +2042,24 @@ export function FinanceiroTab() {
               Confirmar
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={messageModal.open}
+        title={messageModal.title || "Atenção"}
+        onClose={() => setMessageModal({ open: false, title: "", message: "" })}
+      >
+        <div className="text-center space-y-4">
+          <p className="text-slate-600 font-medium">{messageModal.message}</p>
+          <button
+            onClick={() =>
+              setMessageModal({ open: false, title: "", message: "" })
+            }
+            className="px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700"
+          >
+            OK
+          </button>
         </div>
       </Modal>
     </div>
