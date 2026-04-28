@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { adminApi } from "../api";
 import { Icons } from "../components/Icons";
-import { Modal, Table } from "../components/Shared";
+import { CurrencyInput, Modal, Table } from "../components/Shared";
 import logoLoja from "../img/logo.png";
 import { ContaBancaria, Role, SessaoCaixaAdmin } from "../types";
 import { formatDate, formatMoney } from "../utils";
@@ -43,8 +43,8 @@ export function VendasTab() {
   const [ajusteFechamentoModalOpen, setAjusteFechamentoModalOpen] =
     useState(false);
   const [ajusteFechamentoForm, setAjusteFechamentoForm] = useState({
-    saldoInicial: "",
-    saldoFinal: "",
+    saldoInicial: 0,
+    saldoFinal: 0,
   });
 
   // Extrato de Conta (Recebíveis)
@@ -204,26 +204,31 @@ export function VendasTab() {
   const handleOpenAjusteFechamentoModal = () => {
     if (!selectedSessao) return;
     setAjusteFechamentoForm({
-      saldoInicial: (selectedSessao.saldo_inicial || 0).toFixed(2),
-      saldoFinal: (selectedSessao.saldo_final_declarado || 0).toFixed(2),
+      saldoInicial: selectedSessao.saldo_inicial || 0,
+      saldoFinal: selectedSessao.saldo_final_declarado || 0,
     });
     setAjusteFechamentoModalOpen(true);
+  };
+
+  const parseMoneyToNumber = (value: unknown) => {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : NaN;
+    }
+    const raw = String(value ?? "").trim();
+    if (!raw) return NaN;
+    const normalized = raw.includes(",")
+      ? raw.replace(/\./g, "").replace(",", ".")
+      : raw;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
   };
 
   const handleAjustarFechamentoSessao = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedSessao) return;
-    const novoSaldoInicial = Number(
-      String(ajusteFechamentoForm.saldoInicial)
-        .trim()
-        .replace(/\./g, "")
-        .replace(",", "."),
-    );
-    const novoSaldoFinalDeclarado = Number(
-      String(ajusteFechamentoForm.saldoFinal)
-        .trim()
-        .replace(/\./g, "")
-        .replace(",", "."),
+    const novoSaldoInicial = parseMoneyToNumber(ajusteFechamentoForm.saldoInicial);
+    const novoSaldoFinalDeclarado = parseMoneyToNumber(
+      ajusteFechamentoForm.saldoFinal,
     );
     if (
       !Number.isFinite(novoSaldoInicial) ||
@@ -1270,36 +1275,30 @@ export function VendasTab() {
             <label className="block text-sm font-bold text-slate-600 mb-1">
               Valor Inicial (Abertura)
             </label>
-            <input
-              type="text"
+            <CurrencyInput
               value={ajusteFechamentoForm.saldoInicial}
-              onChange={(e) =>
+              onChange={(valor) =>
                 setAjusteFechamentoForm((prev) => ({
                   ...prev,
-                  saldoInicial: e.target.value,
+                  saldoInicial: valor,
                 }))
               }
-              className="w-full p-2 border rounded-lg"
-              placeholder="0,00"
-              required
+              className="w-full p-2 border rounded-lg pl-8"
             />
           </div>
           <div>
             <label className="block text-sm font-bold text-slate-600 mb-1">
               Valor Final (Fechamento)
             </label>
-            <input
-              type="text"
+            <CurrencyInput
               value={ajusteFechamentoForm.saldoFinal}
-              onChange={(e) =>
+              onChange={(valor) =>
                 setAjusteFechamentoForm((prev) => ({
                   ...prev,
-                  saldoFinal: e.target.value,
+                  saldoFinal: valor,
                 }))
               }
-              className="w-full p-2 border rounded-lg"
-              placeholder="0,00"
-              required
+              className="w-full p-2 border rounded-lg pl-8"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
