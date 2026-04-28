@@ -40,6 +40,12 @@ export function VendasTab() {
     message: string;
     onConfirm: () => void;
   }>({ open: false, title: "", message: "", onConfirm: () => {} });
+  const [ajusteFechamentoModalOpen, setAjusteFechamentoModalOpen] =
+    useState(false);
+  const [ajusteFechamentoForm, setAjusteFechamentoForm] = useState({
+    saldoInicial: "",
+    saldoFinal: "",
+  });
 
   // Extrato de Conta (Recebíveis)
   const [extratoModalOpen, setExtratoModalOpen] = useState(false);
@@ -195,25 +201,29 @@ export function VendasTab() {
     });
   };
 
-  const handleAjustarFechamentoSessao = async () => {
+  const handleOpenAjusteFechamentoModal = () => {
     if (!selectedSessao) return;
-    const saldoInicialAtual = selectedSessao.saldo_inicial || 0;
-    const saldoFinalAtual = selectedSessao.saldo_final_declarado || 0;
-    const novoSaldoInicialRaw = prompt(
-      "Informe o novo Valor Inicial (abertura de caixa):",
-      saldoInicialAtual.toFixed(2).replace(".", ","),
-    );
-    if (novoSaldoInicialRaw === null) return;
-    const novoSaldoFinalRaw = prompt(
-      "Informe o novo Valor Final (contagem no fechamento):",
-      saldoFinalAtual.toFixed(2).replace(".", ","),
-    );
-    if (novoSaldoFinalRaw === null) return;
+    setAjusteFechamentoForm({
+      saldoInicial: (selectedSessao.saldo_inicial || 0).toFixed(2),
+      saldoFinal: (selectedSessao.saldo_final_declarado || 0).toFixed(2),
+    });
+    setAjusteFechamentoModalOpen(true);
+  };
+
+  const handleAjustarFechamentoSessao = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedSessao) return;
     const novoSaldoInicial = Number(
-      String(novoSaldoInicialRaw).trim().replace(/\./g, "").replace(",", "."),
+      String(ajusteFechamentoForm.saldoInicial)
+        .trim()
+        .replace(/\./g, "")
+        .replace(",", "."),
     );
     const novoSaldoFinalDeclarado = Number(
-      String(novoSaldoFinalRaw).trim().replace(/\./g, "").replace(",", "."),
+      String(ajusteFechamentoForm.saldoFinal)
+        .trim()
+        .replace(/\./g, "")
+        .replace(",", "."),
     );
     if (
       !Number.isFinite(novoSaldoInicial) ||
@@ -229,6 +239,7 @@ export function VendasTab() {
         saldo_inicial: novoSaldoInicial,
         saldo_final_declarado: novoSaldoFinalDeclarado,
       });
+      setAjusteFechamentoModalOpen(false);
       await handleOpenDetails(selectedSessao.id);
       await loadSessoes();
       alert("Ajuste aplicado com sucesso.");
@@ -858,7 +869,7 @@ export function VendasTab() {
                           {formatMoney(selectedSessao.saldo_inicial)}
                           {isSuperAdminEnv && (
                             <button
-                              onClick={handleAjustarFechamentoSessao}
+                              onClick={handleOpenAjusteFechamentoModal}
                               className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
                               title="Editar fechamento (Super Admin)"
                             >
@@ -874,15 +885,6 @@ export function VendasTab() {
                         <div className="text-xl font-bold text-slate-800 flex items-center gap-2">
                           {formatMoney(
                             selectedSessao.saldo_final_declarado || 0,
-                          )}
-                          {isSuperAdminEnv && (
-                            <button
-                              onClick={handleAjustarFechamentoSessao}
-                              className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
-                              title="Editar fechamento (Super Admin)"
-                            >
-                              Editar
-                            </button>
                           )}
                         </div>
                       </div>
@@ -1255,6 +1257,67 @@ export function VendasTab() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* MODAL AJUSTE FECHAMENTO */}
+      <Modal
+        open={ajusteFechamentoModalOpen}
+        title="Editar Fechamento do Caixa"
+        onClose={() => setAjusteFechamentoModalOpen(false)}
+      >
+        <form onSubmit={handleAjustarFechamentoSessao} className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">
+              Valor Inicial (Abertura)
+            </label>
+            <input
+              type="text"
+              value={ajusteFechamentoForm.saldoInicial}
+              onChange={(e) =>
+                setAjusteFechamentoForm((prev) => ({
+                  ...prev,
+                  saldoInicial: e.target.value,
+                }))
+              }
+              className="w-full p-2 border rounded-lg"
+              placeholder="0,00"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">
+              Valor Final (Fechamento)
+            </label>
+            <input
+              type="text"
+              value={ajusteFechamentoForm.saldoFinal}
+              onChange={(e) =>
+                setAjusteFechamentoForm((prev) => ({
+                  ...prev,
+                  saldoFinal: e.target.value,
+                }))
+              }
+              className="w-full p-2 border rounded-lg"
+              placeholder="0,00"
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setAjusteFechamentoModalOpen(false)}
+              className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700"
+            >
+              Salvar Ajuste
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
