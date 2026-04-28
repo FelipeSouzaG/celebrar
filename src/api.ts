@@ -515,6 +515,15 @@ class AdminApi {
       method: "DELETE",
     });
   }
+  ajustarSessaoDinheiro(id: string, total_dinheiro: number) {
+    return this.request<{ success: boolean; sessao: SessaoCaixaAdmin }>(
+      `/admin/sessoes/${id}/ajuste-dinheiro`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ total_dinheiro }),
+      },
+    );
+  }
 }
 
 export const adminApi = new AdminApi();
