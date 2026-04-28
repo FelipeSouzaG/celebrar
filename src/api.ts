@@ -515,12 +515,15 @@ class AdminApi {
       method: "DELETE",
     });
   }
-  ajustarSessaoDinheiro(id: string, total_dinheiro: number) {
+  ajustarSessaoFechamento(
+    id: string,
+    data: { saldo_inicial: number; saldo_final_declarado: number },
+  ) {
     return this.request<{ success: boolean; sessao: SessaoCaixaAdmin }>(
-      `/admin/sessoes/${id}/ajuste-dinheiro`,
+      `/admin/sessoes/${id}/ajuste-fechamento`,
       {
         method: "PUT",
-        body: JSON.stringify({ total_dinheiro }),
+        body: JSON.stringify(data),
       },
     );
   }
