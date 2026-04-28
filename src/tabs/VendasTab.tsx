@@ -195,28 +195,45 @@ export function VendasTab() {
     });
   };
 
-  const handleAjustarDinheiroSessao = async () => {
+  const handleAjustarFechamentoSessao = async () => {
     if (!selectedSessao) return;
-    const valorAtual = selectedSessao.total_dinheiro || 0;
-    const novoValorRaw = prompt(
-      "Informe o novo total de Vendas em Dinheiro para este caixa fechado:",
-      valorAtual.toFixed(2).replace(".", ","),
+    const saldoInicialAtual = selectedSessao.saldo_inicial || 0;
+    const saldoFinalAtual = selectedSessao.saldo_final_declarado || 0;
+    const novoSaldoInicialRaw = prompt(
+      "Informe o novo Valor Inicial (abertura de caixa):",
+      saldoInicialAtual.toFixed(2).replace(".", ","),
     );
-    if (novoValorRaw === null) return;
-    const novoValor = Number(
-      String(novoValorRaw).trim().replace(/\./g, "").replace(",", "."),
+    if (novoSaldoInicialRaw === null) return;
+    const novoSaldoFinalRaw = prompt(
+      "Informe o novo Valor Final (contagem no fechamento):",
+      saldoFinalAtual.toFixed(2).replace(".", ","),
     );
-    if (!Number.isFinite(novoValor) || novoValor < 0) {
+    if (novoSaldoFinalRaw === null) return;
+    const novoSaldoInicial = Number(
+      String(novoSaldoInicialRaw).trim().replace(/\./g, "").replace(",", "."),
+    );
+    const novoSaldoFinalDeclarado = Number(
+      String(novoSaldoFinalRaw).trim().replace(/\./g, "").replace(",", "."),
+    );
+    if (
+      !Number.isFinite(novoSaldoInicial) ||
+      novoSaldoInicial < 0 ||
+      !Number.isFinite(novoSaldoFinalDeclarado) ||
+      novoSaldoFinalDeclarado < 0
+    ) {
       alert("Valor inválido.");
       return;
     }
     try {
-      await adminApi.ajustarSessaoDinheiro(selectedSessao.id, novoValor);
+      await adminApi.ajustarSessaoFechamento(selectedSessao.id, {
+        saldo_inicial: novoSaldoInicial,
+        saldo_final_declarado: novoSaldoFinalDeclarado,
+      });
       await handleOpenDetails(selectedSessao.id);
       await loadSessoes();
       alert("Ajuste aplicado com sucesso.");
     } catch (e: any) {
-      alert(e.message || "Erro ao ajustar dinheiro da sessão.");
+      alert(e.message || "Erro ao ajustar fechamento da sessão.");
     }
   };
 
@@ -837,17 +854,35 @@ export function VendasTab() {
                         <div className="text-[11px] text-slate-500 uppercase font-bold mb-1">
                           Valor Inicial
                         </div>
-                        <div className="text-xl font-bold text-indigo-600">
+                        <div className="text-xl font-bold text-indigo-600 flex items-center gap-2">
                           {formatMoney(selectedSessao.saldo_inicial)}
+                          {isSuperAdminEnv && (
+                            <button
+                              onClick={handleAjustarFechamentoSessao}
+                              className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
+                              title="Editar fechamento (Super Admin)"
+                            >
+                              Editar
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="p-3 rounded-lg border border-slate-100 bg-white shadow-sm">
                         <div className="text-[11px] text-slate-500 uppercase font-bold mb-1">
                           Valor Final
                         </div>
-                        <div className="text-xl font-bold text-slate-800">
+                        <div className="text-xl font-bold text-slate-800 flex items-center gap-2">
                           {formatMoney(
                             selectedSessao.saldo_final_declarado || 0,
+                          )}
+                          {isSuperAdminEnv && (
+                            <button
+                              onClick={handleAjustarFechamentoSessao}
+                              className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
+                              title="Editar fechamento (Super Admin)"
+                            >
+                              Editar
+                            </button>
                           )}
                         </div>
                       </div>
@@ -856,13 +891,9 @@ export function VendasTab() {
                           Quebra de Caixa
                         </div>
                         <div
-                          className={`text-xl font-bold ${(selectedSessao.saldo_final_declarado || 0) - (selectedSessao.saldo_inicial + (selectedSessao.total_dinheiro || 0)) < 0 ? "text-rose-600" : (selectedSessao.saldo_final_declarado || 0) - (selectedSessao.saldo_inicial + (selectedSessao.total_dinheiro || 0)) > 0 ? "text-emerald-600" : "text-slate-400"}`}
+                          className={`text-xl font-bold ${(selectedSessao.quebra_caixa || 0) < 0 ? "text-rose-600" : (selectedSessao.quebra_caixa || 0) > 0 ? "text-emerald-600" : "text-slate-400"}`}
                         >
-                          {formatMoney(
-                            (selectedSessao.saldo_final_declarado || 0) -
-                              (selectedSessao.saldo_inicial +
-                                (selectedSessao.total_dinheiro || 0)),
-                          )}
+                          {formatMoney(selectedSessao.quebra_caixa || 0)}
                         </div>
                       </div>
                       <div className="p-3 rounded-lg border border-indigo-200 bg-indigo-50 shadow-sm">
@@ -890,21 +921,9 @@ export function VendasTab() {
                       </div>
                       <div className="flex justify-between">
                         <span>(+) Vendas em Dinheiro</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono">
-                            {formatMoney(selectedSessao.total_dinheiro || 0)}
-                          </span>
-                          {isSuperAdminEnv &&
-                            selectedSessao.status === "FECHADO" && (
-                              <button
-                                onClick={handleAjustarDinheiroSessao}
-                                className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
-                                title="Ajustar vendas em dinheiro (Super Admin)"
-                              >
-                                Editar
-                              </button>
-                            )}
-                        </div>
+                        <span className="font-mono">
+                          {formatMoney(selectedSessao.total_dinheiro || 0)}
+                        </span>
                       </div>
                       <div className="flex justify-between border-t border-gray-300 pt-2">
                         <span className="font-bold">Subtotal (Dinheiro)</span>
