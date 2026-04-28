@@ -12,6 +12,7 @@ export function VendasTab() {
   const [selectedSessao, setSelectedSessao] = useState<SessaoCaixaAdmin | null>(
     null,
   );
+  const [isSuperAdminEnv, setIsSuperAdminEnv] = useState(false);
   const [userRole, setUserRole] = useState<Role>("OPERADOR");
   const isAdmin = userRole === "ADMIN";
 
@@ -54,7 +55,10 @@ export function VendasTab() {
   const loadSessoes = async () => {
     try {
       const user = adminApi.getStoredUser();
-      if (user) setUserRole(user.role);
+      if (user) {
+        setUserRole(user.role);
+        setIsSuperAdminEnv(user.id === "super-admin-env");
+      }
 
       const data = await adminApi.getSessoesCaixa();
       setSessoes(data);
@@ -189,6 +193,31 @@ export function VendasTab() {
         }
       },
     });
+  };
+
+  const handleAjustarDinheiroSessao = async () => {
+    if (!selectedSessao) return;
+    const valorAtual = selectedSessao.total_dinheiro || 0;
+    const novoValorRaw = prompt(
+      "Informe o novo total de Vendas em Dinheiro para este caixa fechado:",
+      valorAtual.toFixed(2).replace(".", ","),
+    );
+    if (novoValorRaw === null) return;
+    const novoValor = Number(
+      String(novoValorRaw).trim().replace(/\./g, "").replace(",", "."),
+    );
+    if (!Number.isFinite(novoValor) || novoValor < 0) {
+      alert("Valor inválido.");
+      return;
+    }
+    try {
+      await adminApi.ajustarSessaoDinheiro(selectedSessao.id, novoValor);
+      await handleOpenDetails(selectedSessao.id);
+      await loadSessoes();
+      alert("Ajuste aplicado com sucesso.");
+    } catch (e: any) {
+      alert(e.message || "Erro ao ajustar dinheiro da sessão.");
+    }
   };
 
   const escapeHtml = (value: any) =>
@@ -861,9 +890,21 @@ export function VendasTab() {
                       </div>
                       <div className="flex justify-between">
                         <span>(+) Vendas em Dinheiro</span>
-                        <span className="font-mono">
-                          {formatMoney(selectedSessao.total_dinheiro || 0)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono">
+                            {formatMoney(selectedSessao.total_dinheiro || 0)}
+                          </span>
+                          {isSuperAdminEnv &&
+                            selectedSessao.status === "FECHADO" && (
+                              <button
+                                onClick={handleAjustarDinheiroSessao}
+                                className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 font-bold"
+                                title="Ajustar vendas em dinheiro (Super Admin)"
+                              >
+                                Editar
+                              </button>
+                            )}
+                        </div>
                       </div>
                       <div className="flex justify-between border-t border-gray-300 pt-2">
                         <span className="font-bold">Subtotal (Dinheiro)</span>
