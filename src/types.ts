@@ -472,6 +472,7 @@ export interface VendaDiretaMutationResponse {
   success: boolean;
   venda: VendaAdmin;
   nfe?: NfeResult;
+  documentoSaida?: "NFE" | "PEDIDO_COMPRA";
 }
 
 export interface MovimentacaoCaixaAdmin {
