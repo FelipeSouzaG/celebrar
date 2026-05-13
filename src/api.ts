@@ -485,7 +485,11 @@ class AdminApi {
 
   updateVendaStatus(
     id: string,
-    data: { status: string; contaBancariaId?: string },
+    data: {
+      status: string;
+      contaBancariaId?: string;
+      documentoSaida?: "NFE" | "PEDIDO_COMPRA";
+    },
   ) {
     return this.request<VendaDiretaMutationResponse>(
       `/admin/vendas/${id}/status`,
