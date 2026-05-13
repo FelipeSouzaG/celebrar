@@ -1362,13 +1362,17 @@ export function VendaDiretaTab() {
 
     const rows = itens
       .map((it: any) => {
+        const produtoCatalogo =
+          it?.produto ||
+          produtos.find((p) => p.id === it?.produtoId) ||
+          null;
         const codigo =
-          it?.produto?.codigo_barras ||
+          produtoCatalogo?.codigo_barras ||
           it?.codigo_barras ||
           it?.produtoDetalhes?.produto?.codigo_barras ||
           "-";
         const descricao =
-          it?.produto?.nome ||
+          produtoCatalogo?.nome ||
           it?.produtoNome ||
           it?.descricao ||
           "Sem descrição";
@@ -1588,9 +1592,8 @@ export function VendaDiretaTab() {
       <div class="logo-wrap"><img class="logo" src="${logoLoja}" alt="Logo" /></div>
       <div class="head-title">
         <h1>Pedido de Compra</h1>
-        <div class="subtitle">Documento interno de confirmação de venda direta</div>
         <div class="meta">
-          <div class="meta-card"><b>Venda Direta</b><span>Nº ${escapeHtml(String(numeroVD))}</span></div>
+          <div class="meta-card"><b>Venda Direta</b><span>${escapeHtml(String(numeroVD))}</span></div>
           <div class="meta-card"><b>Data da Compra</b><span>${escapeHtml(String(dataCompra))}</span></div>
           <div class="meta-card"><b>Total</b><span>${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span></div>
         </div>
@@ -1905,10 +1908,20 @@ export function VendaDiretaTab() {
   const getMinDate = () => toInputDate(new Date());
 
   const getMargemInfo = (it: any) => {
-    const pd = it.produtoDetalhes?.produto;
-    const custo = Number(pd?.custo_produto || 0);
-    const margemMin = Number(pd?.margem_minima || 0);
-    if (!pd || custo <= 0) return null;
+    const pd = it?.produtoDetalhes?.produto || it?.produto || null;
+    const produtoCatalogo = produtos.find((p) => p.id === it?.produtoId) || null;
+    const custo = toNumber(
+      pd?.custo_produto ??
+        produtoCatalogo?.custo_produto ??
+        it?.produtoDetalhes?.kpis?.ultimoCusto ??
+        it?.custo_produto ??
+        it?.custoMedio ??
+        0,
+    );
+    const margemMin = toNumber(
+      pd?.margem_minima ?? produtoCatalogo?.margem_minima ?? 0,
+    );
+    if (custo <= 0) return null;
     const preco = Number(it.preco_un_aplicado || 0);
     const qtd = Number(it.qtd || 0);
     const margemValor = (preco - custo) * qtd;
