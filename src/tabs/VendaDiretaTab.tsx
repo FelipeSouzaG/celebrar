@@ -1917,6 +1917,27 @@ export function VendaDiretaTab() {
     return { custo, margemMin, margemValor, margemPct, minimo };
   };
 
+  const getCustoMedioLabel = (it: any) => {
+    const info = getMargemInfo(it);
+    if (!info || info.custo <= 0) return "-";
+    return info.custo.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    });
+  };
+
+  const getMargemAplicadaLabel = (it: any) => {
+    const info = getMargemInfo(it);
+    if (!info || info.custo <= 0) return "Margem aplicada: -";
+    return `Margem aplicada: ${info.margemPct.toFixed(1)}% (${info.margemValor.toLocaleString(
+      "pt-BR",
+      {
+        style: "currency",
+        currency: "BRL",
+      },
+    )})`;
+  };
+
   const handlePrecoBlur = (idx: number, it: any) => {
     const info = getMargemInfo(it);
     if (!info || info.margemMin <= 0) return;
@@ -3068,6 +3089,9 @@ export function VendaDiretaTab() {
                   }
                   onBlur={handleTempPrecoBlur}
                 />
+                <div className="text-[10px] text-slate-400 mt-1">
+                  Custo médio: {getCustoMedioLabel(tempItem)}
+                </div>
                 {getMargemInfo(tempItem) &&
                   getMargemInfo(tempItem)!.margemMin > 0 && (
                     <div className="text-[10px] text-slate-400 mt-1">
@@ -3089,6 +3113,9 @@ export function VendaDiretaTab() {
                     style: "currency",
                     currency: "BRL",
                   })}
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  {getMargemAplicadaLabel(tempItem)}
                 </div>
               </div>
 
@@ -3138,6 +3165,9 @@ export function VendaDiretaTab() {
                       }
                       onBlur={() => handlePrecoBlur(idx, it)}
                     />
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Custo médio: {getCustoMedioLabel(it)}
+                    </div>
                     {getMargemInfo(it) && getMargemInfo(it)!.margemMin > 0 && (
                       <div className="text-[10px] text-slate-400 mt-1">
                         Mín. aceitável:{" "}
@@ -3157,21 +3187,11 @@ export function VendaDiretaTab() {
                       ).toLocaleString("pt-BR", {
                         style: "currency",
                         currency: "BRL",
-                      })}
+                        })}
                     </div>
-                    {getMargemInfo(it) && (
-                      <div className="text-[10px] text-slate-400">
-                        Margem:{" "}
-                        {getMargemInfo(it)!.margemValor.toLocaleString(
-                          "pt-BR",
-                          {
-                            style: "currency",
-                            currency: "BRL",
-                          },
-                        )}{" "}
-                        ({getMargemInfo(it)!.margemPct.toFixed(0)}%)
-                      </div>
-                    )}
+                    <div className="text-[10px] text-slate-400">
+                      {getMargemAplicadaLabel(it)}
+                    </div>
                   </div>
 
                   <div>
