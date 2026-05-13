@@ -17,6 +17,8 @@ const CATALOGO_CATEGORIAS = ["Festas", "Embalagens", "Doces"] as const;
 const FRETE_NAO_APLICAVEL = "NAO_APLICAVEL";
 const FRETE_CELEBRAR_FESTAS = "CELEBRAR_FESTAS";
 const FRETE_DESTINATARIO = "DESTINATARIO";
+const DOCUMENTO_SAIDA_NFE = "NFE";
+const DOCUMENTO_SAIDA_PEDIDO_COMPRA = "PEDIDO_COMPRA";
 
 const normalizePaymentToken = (value: string | null | undefined) =>
   String(value || "")
@@ -124,6 +126,7 @@ export function VendaDiretaTab() {
     nsuTransacao: "",
     formaPagamento: "DINHEIRO",
     status: "PEDIDO",
+    documentoSaida: DOCUMENTO_SAIDA_NFE,
   });
 
   useEffect(() => {
@@ -1335,11 +1338,161 @@ export function VendaDiretaTab() {
     }
   };
 
+  const openPedidoCompraA4 = (venda: any, options?: { autoPrint?: boolean }) => {
+    const autoPrint = options?.autoPrint !== false;
+    const cliente = venda?.cliente || {};
+    const endereco = [
+      venda?.endereco_rua,
+      venda?.endereco_numero,
+      venda?.endereco_complemento,
+      venda?.endereco_bairro,
+      venda?.endereco_cidade,
+      venda?.endereco_estado,
+      venda?.endereco_cep,
+    ]
+      .map((p) => String(p || "").trim())
+      .filter(Boolean)
+      .join(" - ");
+    const itens = Array.isArray(venda?.itens) ? venda.itens : [];
+    const total = Number(venda?.total || 0);
+    const dataCompra = formatDate(venda?.data_venda || new Date().toISOString());
+    const numeroVD = venda?.codigo || venda?.id || "-";
+    const phone =
+      cliente?.contatoTelefone || cliente?.telefone || cliente?.celular || "-";
+
+    const rows = itens
+      .map((it: any) => {
+        const codigo =
+          it?.produto?.codigo_barras ||
+          it?.codigo_barras ||
+          it?.produtoDetalhes?.produto?.codigo_barras ||
+          "-";
+        const descricao =
+          it?.produto?.nome ||
+          it?.produtoNome ||
+          it?.descricao ||
+          "Sem descrição";
+        const qtd = Number(it?.qtd || 0);
+        const unit = Number(it?.preco_un_aplicado || 0);
+        const subtotal = qtd * unit;
+        return `<tr>
+          <td>${escapeHtml(String(codigo))}</td>
+          <td>${escapeHtml(String(descricao))}</td>
+          <td style="text-align:right">${unit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+          <td style="text-align:center">${escapeHtml(String(qtd))}</td>
+          <td style="text-align:right">${subtotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Pedido de Compra - ${escapeHtml(String(numeroVD))}</title>
+<style>
+  @page { size: A4 portrait; margin: 12mm; }
+  body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
+  .top { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #cbd5e1; padding-bottom: 10px; }
+  .logo { width: 100px; height: auto; object-fit: contain; }
+  .title h1 { margin: 0; font-size: 22px; }
+  .title p { margin: 3px 0 0 0; color: #475569; }
+  .section { margin-top: 14px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #64748b; }
+  .value { font-size: 14px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border: 1px solid #cbd5e1; padding: 7px; font-size: 12px; }
+  th { background: #f8fafc; text-align: left; }
+  .footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <img class="logo" src="${logoLoja}" alt="Logo" />
+    <div class="title">
+      <h1>Pedido de Compra</h1>
+      <p>VD Nº ${escapeHtml(String(numeroVD))}</p>
+    </div>
+  </div>
+  <div class="section">
+    <div class="label">Cliente</div>
+    <div class="value">${escapeHtml(String(cliente?.nome || "-"))}</div>
+    <div class="label" style="margin-top:8px">Telefone</div>
+    <div class="value">${escapeHtml(String(phone))}</div>
+    <div class="label" style="margin-top:8px">Endereço</div>
+    <div class="value">${escapeHtml(String(endereco || "-"))}</div>
+  </div>
+  <div class="section">
+    <table>
+      <thead>
+        <tr>
+          <th>Código de Barras</th>
+          <th>Descrição</th>
+          <th>Valor Unitário</th>
+          <th>Quantidade</th>
+          <th>Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>${rows || `<tr><td colspan="5" style="text-align:center">Sem itens.</td></tr>`}</tbody>
+    </table>
+  </div>
+  <div class="footer">
+    <div>Total: ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
+    <div>Data da compra: ${escapeHtml(String(dataCompra))}</div>
+  </div>
+</body>
+</html>`;
+
+    const frame = document.createElement("iframe");
+    frame.style.position = "fixed";
+    frame.style.right = "0";
+    frame.style.bottom = "0";
+    frame.style.width = "0";
+    frame.style.height = "0";
+    frame.style.border = "0";
+    document.body.appendChild(frame);
+    const win = frame.contentWindow;
+    if (!win) return;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => {
+      if (autoPrint) {
+        win.focus();
+        win.print();
+      }
+      setTimeout(() => {
+        if (document.body.contains(frame)) document.body.removeChild(frame);
+      }, 700);
+    }, 250);
+  };
+
   const showFiscalFeedback = (
     result: VendaDiretaMutationResponse | undefined,
     successMessage: string,
     venda?: any,
+    documentoSaida?: string,
   ) => {
+    const finalDocumentoSaida =
+      result?.documentoSaida || documentoSaida || DOCUMENTO_SAIDA_NFE;
+
+    if (
+      finalDocumentoSaida === DOCUMENTO_SAIDA_PEDIDO_COMPRA &&
+      String(venda?.status || "").toUpperCase() === "CONCLUIDO"
+    ) {
+      try {
+        openPedidoCompraA4(venda, { autoPrint: true });
+      } catch (e) {
+        console.error(e);
+      }
+      setAlertModal({
+        open: true,
+        title: "Venda Direta",
+        message: `${successMessage}\nPedido de Compra A4 aberto para impressão.`,
+      });
+      return;
+    }
+
     if (result?.nfe?.statusCode === "DISABLED") {
       setAlertModal({
         open: true,
@@ -1402,6 +1555,10 @@ export function VendaDiretaTab() {
       const contaBancariaId = !isDinheiro ? form.formaPagamento : null;
       const tipo_pagamento = isDinheiro ? "DINHEIRO" : selectedPaymentType;
       const nsu_transacao = String(form.nsuTransacao || "").trim();
+      const documentoSaida =
+        form.documentoSaida === DOCUMENTO_SAIDA_PEDIDO_COMPRA
+          ? DOCUMENTO_SAIDA_PEDIDO_COMPRA
+          : DOCUMENTO_SAIDA_NFE;
 
       if (editingId) {
         // Editar venda existente
@@ -1435,6 +1592,7 @@ export function VendaDiretaTab() {
           pedidoInterno: form.pedidoInterno || "",
           observacoesComerciais: form.observacoesComerciais || "",
           informacaoFiscalComplementar: form.informacaoFiscalComplementar || "",
+          documentoSaida,
         });
         const vendaRetornada = result?.venda
           ? { ...vendaParaImpressao, ...result.venda }
@@ -1443,6 +1601,7 @@ export function VendaDiretaTab() {
           result,
           "Venda atualizada com sucesso.",
           vendaRetornada,
+          documentoSaida,
         );
         setEditingId(null);
       } else {
@@ -1476,11 +1635,17 @@ export function VendaDiretaTab() {
           pedidoInterno: form.pedidoInterno || "",
           observacoesComerciais: form.observacoesComerciais || "",
           informacaoFiscalComplementar: form.informacaoFiscalComplementar || "",
+          documentoSaida,
         });
         const vendaRetornada = result?.venda
           ? { ...vendaParaImpressao, ...result.venda }
           : vendaParaImpressao;
-        showFiscalFeedback(result, "Venda criada com sucesso.", vendaRetornada);
+        showFiscalFeedback(
+          result,
+          "Venda criada com sucesso.",
+          vendaRetornada,
+          documentoSaida,
+        );
       }
       setModalOpen(false);
       // Recarrega lista
@@ -1506,6 +1671,7 @@ export function VendaDiretaTab() {
         nsuTransacao: "",
         formaPagamento: "DINHEIRO",
         status: "PEDIDO",
+        documentoSaida: DOCUMENTO_SAIDA_NFE,
       });
       setClienteQuery("");
       setClienteSuggestions([]);
@@ -1882,6 +2048,7 @@ export function VendaDiretaTab() {
                 nsuTransacao: "",
                 formaPagamento: "DINHEIRO",
                 status: "PEDIDO",
+                documentoSaida: DOCUMENTO_SAIDA_NFE,
               });
               setClienteQuery("");
               setClienteSuggestions([]);
@@ -2007,6 +2174,12 @@ export function VendaDiretaTab() {
                           className="text-emerald-600 hover:bg-emerald-50 p-2 rounded"
                           title="Concluir"
                           onClick={async () => {
+                            const gerarNfe = window.confirm(
+                              "Gerar NF-e ao concluir esta venda?\n\nOK = Nota Fiscal\nCancelar = Pedido de Compra",
+                            );
+                            const documentoSaida = gerarNfe
+                              ? DOCUMENTO_SAIDA_NFE
+                              : DOCUMENTO_SAIDA_PEDIDO_COMPRA;
                             setConfirmModal({
                               open: true,
                               title: "Concluir Venda",
@@ -2018,12 +2191,14 @@ export function VendaDiretaTab() {
                                       status: "CONCLUIDO",
                                       contaBancariaId:
                                         v.contaBancariaId || null,
+                                      documentoSaida,
                                     });
                                   await loadVendas();
                                   showFiscalFeedback(
                                     result,
                                     "Venda concluída com sucesso.",
                                     v,
+                                    documentoSaida,
                                   );
                                 } catch (e) {
                                   setAlertModal({
@@ -2094,6 +2269,7 @@ export function VendaDiretaTab() {
                               nsuTransacao: v.nsu_transacao || "",
                               formaPagamento: v.contaBancariaId || "DINHEIRO",
                               status: v.status,
+                              documentoSaida: DOCUMENTO_SAIDA_NFE,
                             });
                             setClienteQuery(v.cliente?.nome || "");
                             setSelectedCliente(
@@ -2376,6 +2552,7 @@ export function VendaDiretaTab() {
             nsuTransacao: "",
             formaPagamento: "DINHEIRO",
             status: "PEDIDO",
+            documentoSaida: DOCUMENTO_SAIDA_NFE,
           });
           setClienteQuery("");
           setClienteSuggestions([]);
@@ -2859,6 +3036,40 @@ export function VendaDiretaTab() {
                   <option value="ENTREGA">Entrega (pago, programado)</option>
                   <option value="CONCLUIDO">Concluído (pago e entregue)</option>
                 </select>
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-2">
+                Emissão na Conclusão
+              </label>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="documentoSaida"
+                    checked={form.documentoSaida === DOCUMENTO_SAIDA_NFE}
+                    onChange={() =>
+                      setForm({ ...form, documentoSaida: DOCUMENTO_SAIDA_NFE })
+                    }
+                  />
+                  Nota Fiscal (gera XML e envia para SEFAZ)
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="documentoSaida"
+                    checked={
+                      form.documentoSaida === DOCUMENTO_SAIDA_PEDIDO_COMPRA
+                    }
+                    onChange={() =>
+                      setForm({
+                        ...form,
+                        documentoSaida: DOCUMENTO_SAIDA_PEDIDO_COMPRA,
+                      })
+                    }
+                  />
+                  Pedido de Compra (impressão A4)
+                </label>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
