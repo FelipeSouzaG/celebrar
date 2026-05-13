@@ -1391,54 +1391,260 @@ export function VendaDiretaTab() {
 <meta charset="utf-8" />
 <title>Pedido de Compra - ${escapeHtml(String(numeroVD))}</title>
 <style>
-  @page { size: A4 portrait; margin: 12mm; }
-  body { font-family: Arial, sans-serif; color: #111827; margin: 0; }
-  .top { display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #cbd5e1; padding-bottom: 10px; }
-  .logo { width: 100px; height: auto; object-fit: contain; }
-  .title h1 { margin: 0; font-size: 22px; }
-  .title p { margin: 3px 0 0 0; color: #475569; }
-  .section { margin-top: 14px; }
-  .label { font-size: 11px; text-transform: uppercase; color: #64748b; }
-  .value { font-size: 14px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  th, td { border: 1px solid #cbd5e1; padding: 7px; font-size: 12px; }
-  th { background: #f8fafc; text-align: left; }
-  .footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
+  @page { size: A4 portrait; margin: 11mm; }
+  :root {
+    --ink: #0f172a;
+    --muted: #475569;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --surface: #f8fafc;
+    --accent: #0f766e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 12px;
+  }
+  .sheet {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .header {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 16px;
+    padding: 14px;
+    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+    border-bottom: 1px solid var(--line);
+  }
+  .logo-wrap {
+    height: 86px;
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+  .logo {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .head-title h1 {
+    margin: 0;
+    font-size: 25px;
+    line-height: 1.05;
+    letter-spacing: 0.3px;
+  }
+  .subtitle {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .meta {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .meta-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px;
+  }
+  .meta-card b {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #64748b;
+    display: block;
+    margin-bottom: 3px;
+    letter-spacing: 0.2px;
+  }
+  .meta-card span {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .content { padding: 12px 14px 10px; }
+  .client-box {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .box-title {
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+  }
+  .client-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 0;
+  }
+  .client-grid .field {
+    padding: 8px 10px;
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .client-grid .field:nth-child(2n) { border-right: 0; }
+  .client-grid .field:last-child,
+  .client-grid .field:nth-last-child(2) { border-bottom: 0; }
+  .field .label {
+    font-size: 10px;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+    font-weight: 700;
+  }
+  .field .value {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 8px 9px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 12px;
+    vertical-align: top;
+  }
+  th {
+    background: var(--surface);
+    text-transform: uppercase;
+    color: #334155;
+    font-size: 10px;
+    letter-spacing: 0.25px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+  }
+  tbody tr:nth-child(even) td { background: #fcfdff; }
+  td.right, th.right { text-align: right; }
+  td.center, th.center { text-align: center; }
+  .total-row td {
+    background: #f0fdfa;
+    border-top: 1px solid #99f6e4;
+    border-bottom: 0;
+    font-weight: 800;
+  }
+  .footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+    align-items: end;
+  }
+  .obs {
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 74px;
+  }
+  .obs .title {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .signature {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    min-height: 74px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .signature .line {
+    border-top: 1px solid var(--line);
+    padding-top: 6px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
 </style>
 </head>
 <body>
-  <div class="top">
-    <img class="logo" src="${logoLoja}" alt="Logo" />
-    <div class="title">
-      <h1>Pedido de Compra</h1>
-      <p>VD Nº ${escapeHtml(String(numeroVD))}</p>
+  <div class="sheet">
+    <div class="header">
+      <div class="logo-wrap"><img class="logo" src="${logoLoja}" alt="Logo" /></div>
+      <div class="head-title">
+        <h1>Pedido de Compra</h1>
+        <div class="subtitle">Documento interno de confirmação de venda direta</div>
+        <div class="meta">
+          <div class="meta-card"><b>Venda Direta</b><span>Nº ${escapeHtml(String(numeroVD))}</span></div>
+          <div class="meta-card"><b>Data da Compra</b><span>${escapeHtml(String(dataCompra))}</span></div>
+          <div class="meta-card"><b>Total</b><span>${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span></div>
+        </div>
+      </div>
     </div>
-  </div>
-  <div class="section">
-    <div class="label">Cliente</div>
-    <div class="value">${escapeHtml(String(cliente?.nome || "-"))}</div>
-    <div class="label" style="margin-top:8px">Telefone</div>
-    <div class="value">${escapeHtml(String(phone))}</div>
-    <div class="label" style="margin-top:8px">Endereço</div>
-    <div class="value">${escapeHtml(String(endereco || "-"))}</div>
-  </div>
-  <div class="section">
-    <table>
-      <thead>
-        <tr>
-          <th>Código de Barras</th>
-          <th>Descrição</th>
-          <th>Valor Unitário</th>
-          <th>Quantidade</th>
-          <th>Subtotal</th>
-        </tr>
-      </thead>
-      <tbody>${rows || `<tr><td colspan="5" style="text-align:center">Sem itens.</td></tr>`}</tbody>
-    </table>
-  </div>
-  <div class="footer">
-    <div>Total: ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</div>
-    <div>Data da compra: ${escapeHtml(String(dataCompra))}</div>
+
+    <div class="content">
+      <div class="client-box">
+        <div class="box-title">Dados do Cliente</div>
+        <div class="client-grid">
+          <div class="field">
+            <div class="label">Nome</div>
+            <div class="value">${escapeHtml(String(cliente?.nome || "-"))}</div>
+          </div>
+          <div class="field">
+            <div class="label">Telefone</div>
+            <div class="value">${escapeHtml(String(phone))}</div>
+          </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <div class="label">Endereço</div>
+            <div class="value">${escapeHtml(String(endereco || "-"))}</div>
+          </div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th style="width:21%;">Código de Barras</th>
+            <th style="width:39%;">Descrição</th>
+            <th class="right" style="width:14%;">Valor Unitário</th>
+            <th class="center" style="width:10%;">Quantidade</th>
+            <th class="right" style="width:16%;">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="5" class="center">Sem itens.</td></tr>`}
+          <tr class="total-row">
+            <td colspan="4" class="right">Valor Total</td>
+            <td class="right">${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="footer">
+        <div class="obs">
+          <div class="title">Observações</div>
+          <div>Conferir itens e quantidades no ato da entrega.</div>
+        </div>
+        <div class="signature">
+          <div class="line">Assinatura do Cliente</div>
+        </div>
+      </div>
+    </div>
   </div>
 </body>
 </html>`;
